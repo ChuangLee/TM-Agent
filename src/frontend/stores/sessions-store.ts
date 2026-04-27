@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { TmuxSessionState, TmuxStateSnapshot } from "../../shared/protocol.js";
 
+const MANAGED_SESSION_PREFIXES = ["tm-agent-client-", "agent-tmux-client-"];
+
 export interface SessionsState {
   snapshot: TmuxStateSnapshot | null;
   /** Managed grouped client-session name (tm-agent-client-<id>). */
@@ -27,5 +29,8 @@ export const selectAttachedBaseState = (
   return snapshot.sessions.find((s) => s.name === attachedBaseSession);
 };
 
+export const isManagedClientSession = (name: string): boolean =>
+  MANAGED_SESSION_PREFIXES.some((prefix) => name.startsWith(prefix));
+
 export const selectBaseSessions = (snapshot: TmuxStateSnapshot | null): TmuxSessionState[] =>
-  (snapshot?.sessions ?? []).filter((s) => !s.name.startsWith("tm-agent-client-"));
+  (snapshot?.sessions ?? []).filter((s) => !isManagedClientSession(s.name));

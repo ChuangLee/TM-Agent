@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { useSessionsStore } from "../../stores/sessions-store.js";
+import { isManagedClientSession, useSessionsStore } from "../../stores/sessions-store.js";
 import { useSheetStore } from "../../stores/sheet-store.js";
 import { formatRelativeTime } from "../../lib/format-relative-time.js";
 
@@ -84,9 +84,7 @@ export function SessionList({ onSelect }: SessionListProps): ReactElement {
     );
   }
 
-  const sessions = snapshot.sessions.filter(
-    (session) => !session.name.startsWith("tm-agent-client-")
-  );
+  const sessions = snapshot.sessions.filter((session) => !isManagedClientSession(session.name));
 
   const NewSessionRow = (
     <button

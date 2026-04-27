@@ -180,14 +180,17 @@ const summarizeState = (state: TmuxStateSnapshot): string => {
 };
 
 const CLIENT_SESSION_PREFIX = "tm-agent-client-";
+const LEGACY_CLIENT_SESSION_PREFIXES = ["agent-tmux-client-"];
 
-const isManagedClientSession = (name: string): boolean => name.startsWith(CLIENT_SESSION_PREFIX);
+const isManagedClientSession = (name: string): boolean =>
+  name.startsWith(CLIENT_SESSION_PREFIX) ||
+  LEGACY_CLIENT_SESSION_PREFIXES.some((prefix) => name.startsWith(prefix));
 
 /**
  * Per (clientId, slot) managed session name. Suffixing every slot — including
- * slot 0 — keeps a single naming scheme. Old "tm-agent-client-{id}" names
- * from pre-PR-#3 sessions are still recognized by isManagedClientSession()
- * for shutdown sweeping.
+ * slot 0 — keeps a single naming scheme. Legacy "agent-tmux-client-*"
+ * names from pre-rebrand deployments are still recognized by
+ * isManagedClientSession() for filtering and shutdown sweeping.
  */
 const buildClientSessionName = (clientId: string, slot: SlotId): string =>
   `${CLIENT_SESSION_PREFIX}${clientId}-${slot}`;

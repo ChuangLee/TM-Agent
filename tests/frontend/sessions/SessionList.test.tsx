@@ -36,6 +36,12 @@ describe("<SessionList /> — loading + empty states", () => {
             attached: false,
             windows: 1,
             windowStates: []
+          },
+          {
+            name: "agent-tmux-client-legacy",
+            attached: false,
+            windows: 1,
+            windowStates: []
           }
         ]
       },

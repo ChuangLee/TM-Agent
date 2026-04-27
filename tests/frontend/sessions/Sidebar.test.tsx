@@ -29,6 +29,12 @@ const snapshot = {
       attached: false,
       windows: 1,
       windowStates: []
+    },
+    {
+      name: "agent-tmux-client-legacy",
+      attached: false,
+      windows: 1,
+      windowStates: []
     }
   ]
 };
@@ -58,7 +64,7 @@ describe("<Sidebar />", () => {
     expect(screen.getByTestId("sidebar-attached-name").textContent).toBe("main");
 
     const items = screen.getAllByTestId("session-list-item");
-    expect(items.length).toBe(2); // main + work, client-* hidden
+    expect(items.length).toBe(2); // main + work, managed client sessions hidden
     expect(items[0]?.getAttribute("data-session")).toBe("main");
     expect(items[0]?.getAttribute("aria-current")).toBe("true");
   });
