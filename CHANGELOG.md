@@ -9,13 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- _Reserved for the next development cycle._
+- Public documentation now frames TM-Agent as a precision console for
+  supervising multiple AI agents directly through tmux.
 
 ### Security
 
 - Redact token/password from non-interactive startup logs.
-- Keep the browser password in memory only and clear the legacy
-  `localStorage` key.
+- Replace browser password persistence with an HttpOnly session cookie and
+  clear legacy `localStorage` keys.
 - Remove skip-permission agent commands from built-in presets and shell
   suggestions.
 

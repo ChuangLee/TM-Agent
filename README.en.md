@@ -2,9 +2,11 @@
 
 **English** · [简体中文](./README.md)
 
-> **The precision console for the agent era** — drive multiple AI agents in parallel from your phone, the tmux way.
+> **The precision console for the agent era** — steer multiple AI agents from anywhere, save tokens, and stay in control.
 
-TM-Agent is a **touch-first** tmux web client. It is not yet another SSH-in-the-browser, and it is not a desktop UI with a mobile skin glued on. Every interaction is **rewritten from the phone outward**, so you can multiplex Claude Code / Codex / Aider / Gemini CLI sessions with surgical precision from the subway, the café, or under the covers — and the same code reflows into a proper two-column desktop layout, no fork required.
+TM-Agent is a UX-first tmux web client optimized for Claude Code, Codex, Gemini CLI, Aider, Hermes, and other agentic terminal workflows. Compared with fully managed agent workspaces such as OpenClaw or Hermes-style hosted environments, TM-Agent does not hand your browser, repo, and context to yet another supervising agent. It puts you directly inside your remote tmux sessions, so you can inspect raw agent output, intervene only when needed, and orchestrate several long-running agents with less summarization, less context churn, and fewer wasted tokens.
+
+It is not another SSH-in-the-browser, and it is not a desktop UI with a mobile skin glued on. Every interaction is designed from the phone outward, then reflows into a serious desktop command deck.
 
 Backend forked from [DagsHub/tmux-mobile](https://github.com/DagsHub/tmux-mobile); frontend rewritten from scratch.
 
@@ -14,14 +16,14 @@ Backend forked from [DagsHub/tmux-mobile](https://github.com/DagsHub/tmux-mobile
 
 ## ✨ Highlights
 
-- 📎 **Paste / drop, agent reads** — paste a screenshot or drop any file into the Compose Bar; the path is auto-injected into the prompt. **No more `scp`.**
-- ⚡ **Smart slash completion** — detects Claude Code / Codex / Gemini / Aider and pops the matching command palette
-- 🪟🪟 **Multi-session tiling** — desktop 1×1 / 1×2 / 2×2; four agents in parallel, no tab juggling
-- 🚀 **Direct Mode** — every desktop keystroke flows straight to the PTY: vim, Ctrl-C, tmux prefix, all native
-- 📜 **Native browser scroll over tmux scrollback** — your wheel, your trackpad, your text selection — not a fake scrollbar
-- 📱 **Truly native touch** — browser kinetic scroll + long-press freeze-and-select; not a single hand-rolled `touchmove`
-- 🗂️ **Built-in file manager** — browse / upload / download / preview (images · PDF · video · audio · Markdown · code)
-- 📈 **Live system pulse** — CPU / memory / load sparklines pinned to the sidebar foot, refreshed every 2s
+- 📱 **Phone-friendly** — touch scrolling, long-press copy, portrait-first layout
+- 📎 **Attach straight to the agent** — paste or drop images, PDFs, code, or any file into the input; TM-Agent uploads it and injects the path into the prompt. **No more `scp`.**
+- 🪟🪟 **Multi-session command deck** — desktop 1×1 / 1×2 / 2×2; observe and direct up to four agents in parallel
+- 📜 **Native tmux scrollback** — mouse wheel / drag selection / Cmd-C copy work like browser primitives, not a fake terminal mode
+- 🗂️ **Built-in file manager** — inspect results immediately: browse / preview / upload / download / delete
+- ⚡ **Agent-optimized sessions** — create Claude Code / Codex / Gemini / Hermes sessions directly, with smart slash completion
+- 🚀 **Direct Mode** — traditional webshell power when you need it; keyboard events pass through to the PTY, so vim and Ctrl-C work natively
+- 📈 **System pulse** — live CPU / memory / load sparklines while your agents run
 - 🔐 **Production-ready** — one-line `curl` install; systemd + nginx + TLS templates included
 
 ---
@@ -47,16 +49,16 @@ Backend forked from [DagsHub/tmux-mobile](https://github.com/DagsHub/tmux-mobile
 
 ## Why not just another webshell
 
-Handing your whole browser tab to a single agent (Claude.ai, ChatGPT Atlas, Comet, the "agentic browsers") looks slick and works terribly:
+Handing your whole browser tab to a single supervising agent (Claude.ai, ChatGPT Atlas, Comet, agentic browsers, or hosted agent workspaces) looks slick and gets expensive fast:
 
-- **Token-wasteful.** Every refresh, every DOM tree gets shoveled into the model's context. Latency and bill climb together.
-- **Imprecise.** One tab, one agent, one thread. You can't watch three tasks across two repos on four branches at once.
-- **Fragile.** Close the tab, drop your wifi, lose the battery — the agent's state is gone.
-- **Hostile on phone.** Mobile UX is an afterthought, and that's where 70% of your idle time lives.
+- **Token-wasteful.** Page state, DOM trees, screenshots, and summaries can all be pushed back into model context. Latency and bill climb together.
+- **Imprecise.** One tab, one agent, one thread. You cannot watch three tasks across two repos on four branches at once.
+- **Fragile.** Close the tab, drop your Wi-Fi, lose the battery — the sense of agent state is gone.
+- **Hostile on phone.** Mobile UX is an afterthought, and that is where much of your idle time lives.
 
 **The right answer is tmux.** One agent per session. Multiplex, parallelize, detach, reattach, switch on demand. tmux's session model has been validated for decades on exactly this shape of workload — long-running processes — and modern agents are _precisely_ long-running processes.
 
-TM-Agent brings that precision multiplexing onto the **vertical glass slab in your pocket**. Full design rationale in [`docs/PRD.md`](./docs/PRD.md) and [`docs/DESIGN_PRINCIPLES.md`](./docs/DESIGN_PRINCIPLES.md).
+TM-Agent brings that precision multiplexing onto the **vertical glass slab in your pocket** and expands it into a 2×2 desktop agent command deck when you are back at a keyboard. Full design rationale in [`docs/PRD.md`](./docs/PRD.md) and [`docs/DESIGN_PRINCIPLES.md`](./docs/DESIGN_PRINCIPLES.md).
 
 > It is **not** an AI-specific tool, but it **understands AI**. To the codebase, a tmux session running `claude` / `codex` / `aider` / `vim` / `htop` / a bare shell is structurally identical — but the Compose Bar offers shortcuts tailored to whichever agent the current pane is hosting. Generic core, considerate edges — see [Design Principle 4](./docs/DESIGN_PRINCIPLES.md).
 

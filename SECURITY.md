@@ -35,8 +35,9 @@ chance to ship the fix before going public.
 
 ## Threat Model
 
-TM-Agent is a single-user web frontend for tmux that exposes a long-lived
-PTY over a WebSocket. The threat model it aims to address:
+TM-Agent is a single-user web frontend for tmux that exposes long-lived PTYs,
+file operations, and agent-control affordances over HTTP/WebSocket. The threat
+model it aims to address:
 
 | In scope                                                               | Out of scope                                                     |
 | ---------------------------------------------------------------------- | ---------------------------------------------------------------- |
@@ -47,8 +48,11 @@ PTY over a WebSocket. The threat model it aims to address:
 
 ### Authentication
 
-- Every WebSocket connection requires **both** a query-string token and a
-  password sent in the auth handshake.
+- Every authenticated request requires the query-string token.
+- If a password is configured, the browser exchanges token + password for an
+  HttpOnly, SameSite session cookie via `/api/auth/session`.
+- WebSocket connections require the token plus either a valid session cookie
+  or a legacy password field accepted for backwards compatibility.
 - Token comparison and password comparison are constant-time.
 - Tokens are minted with `openssl rand` at install time and persisted to
   `/etc/tm-agent/env` (mode 600, root-owned).
@@ -65,8 +69,10 @@ PTY over a WebSocket. The threat model it aims to address:
 - Secrets are loaded via `EnvironmentFile=` in the systemd unit, never as
   command-line args (so they do not appear in `ps`).
 - Non-interactive startup logs redact the token and password.
-- The browser keeps the password in memory only; it is not persisted to
-  `localStorage`.
+- The browser never persists the password to `localStorage`. Current builds
+  actively remove legacy `tm-agent-password` and `agent-tmux-password` keys.
+- The password session is stored as an HttpOnly cookie, so frontend JavaScript
+  cannot read it.
 
 ### What we don't promise (yet)
 

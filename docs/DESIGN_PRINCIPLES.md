@@ -1,6 +1,8 @@
 # Design Principles
 
-Five rules distilled from first-principles analysis of what breaks when tmux meets touchscreens. All UX decisions defer to these. Any deviation requires an ADR with an exception rationale.
+TM-Agent is the precision console for the agent era: it keeps long-running AI agents inside tmux, where they are durable and inspectable, then gives the user a low-friction control surface from phone and desktop. The product should reduce unnecessary model mediation, not add another agent layer between the user and the terminal.
+
+Five rules distilled from first-principles analysis of what breaks when tmux meets touchscreens and agent supervision. All UX decisions defer to these. Any deviation requires an ADR with an exception rationale.
 
 ## 1. A pane is a card, not a tile
 
@@ -8,7 +10,7 @@ Desktop tmux slices the screen into matrix-like rectangles. On a 400 px phone, t
 
 **Consequence**: The same-window panes in TM-Agent are a **horizontally swipeable stack**, not a tiled layout. Only one pane is on screen at a time; the others are indicated by a dots strip. Splitting a pane doesn't split the screen—it adds a card.
 
-Desktop falls back to this same model by default, with an opt-in side-by-side mode post-MVP.
+Desktop is allowed to reflow into a multi-session command deck because it has the pixels and physical keyboard for precise parallel supervision. Mobile stays one readable pane at a time.
 
 ## 2. Scrolling is the universal gesture; history is not a separate surface
 
@@ -30,7 +32,7 @@ A side benefit: the user can _edit before sending_, which is hugely valuable on 
 
 ## 4. Tmux state is top-level app navigation
 
-Sessions and windows are nouns the user cares about. `prefix s` (session picker) and `prefix 0–9` (window jump) hide them behind a chord. That chord is painful on a virtual keyboard.
+Sessions and windows are nouns the user cares about. In the agent era, a session is often "Claude Code on frontend", "Codex running tests", "Gemini reviewing docs", or "logs tail". `prefix s` (session picker) and `prefix 0–9` (window jump) hide those nouns behind a chord. That chord is painful on a virtual keyboard and too slow for multi-agent supervision.
 
 **Consequence**:
 
@@ -38,6 +40,7 @@ Sessions and windows are nouns the user cares about. `prefix s` (session picker)
 - **Windows** = dot indicators in the top bar, swipeable left/right. Long-press the title = session picker shortcut.
 - **Panes** = horizontal card stack inside the surface.
 - **Commands** (new window, split, kill, rename, detach, copy screen) = a one-tap grid behind a ⌘ button.
+- **Agent affordances** (new Claude Code / Codex / Gemini / Hermes session, slash commands, attachment path injection) live around the terminal. They never replace tmux as the source of truth.
 
 The `prefix` key is not exposed to the user. Internally, we call tmux's control commands directly via the `TmuxGateway`.
 
@@ -65,3 +68,5 @@ This clean split lets each layer use the mechanism it's best at, without any lay
 - **No feature is "phone-only" or "desktop-only"**—the viewport is a layout parameter, not a product axis.
 - **Mouse drag = pointer down + move.** Pointer Events are the single gesture abstraction. No duplicated touch/mouse handlers.
 - **Selection is the user's; we never steal it.** If the OS wants to open a text-selection menu on long-press, we don't interfere.
+- **Agent output remains terminal output.** We optimize observation and control, but we do not parse every agent into a proprietary chat transcript.
+- **Token discipline is a UX feature.** If the user can answer a question by reading raw tmux output, do not force a model-mediated summary.

@@ -1,6 +1,6 @@
 # Roadmap
 
-> This is a historical planning log, not the current release checklist. Some early checkbox sections were superseded by later ADR-driven work. For the public release status, see [`README.md`](../README.md).
+> This is a historical planning log, not the current release checklist. TM-Agent's current public positioning is "the precision console for the agent era": direct tmux control over multiple long-running AI agents, optimized for low-friction observation and low-token intervention. Some early checkbox sections were superseded by later ADR-driven work. For the public release status, see [`README.md`](../README.md).
 
 Phased, incremental delivery. Each phase is meant to be independently shippable—at the end of any phase, the app is usable, even if limited.
 

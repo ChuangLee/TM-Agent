@@ -2,27 +2,36 @@
 
 > Status: **draft v1**, 2026-04-19. Updates require a PR; keep a dated revision log at the bottom.
 
+## 0. Positioning
+
+TM-Agent is **the precision console for the agent era**: a UX-first tmux web client that lets developers observe, steer, and recover multiple long-running AI agents from anywhere.
+
+The product is deliberately different from fully managed agent workspaces. It does not wrap your repo in another model-facing browser or ask a supervising agent to summarize what happened. It exposes the actual tmux sessions where Claude Code, Codex, Gemini CLI, Aider, Hermes, builds, tests, and logs are already running, so the user can inspect raw output, intervene precisely, and avoid unnecessary token spend.
+
 ## 1. Problem
 
-A developer's inspiration doesn't wait for them to be at a desk. Modern agentic workflows (Claude Code, Codex, aider) and long-running development tasks routinely live inside tmux sessions on a remote machine. Today the practical options for checking on or driving those sessions from a phone are:
+A developer's inspiration doesn't wait for them to be at a desk. Modern agentic workflows (Claude Code, Codex, Gemini CLI, Aider, Hermes) and long-running development tasks routinely live inside tmux sessions on a remote machine. Today the practical options for checking on or driving those sessions from a phone are:
 
 - **SSH into tmux via a mobile terminal app.** tmux's prefix-key vocabulary, copy mode, split-pane UI, and tiny status bar were all designed for desktop input. On a 400-px-wide touchscreen they are actively hostile.
 - **Existing tmux-over-web clients** (tmux-mobile, wetty, gotty). These put a terminal emulator in the browser, which helps slightly but inherits every desktop-shaped interaction.
+- **Fully managed agent workspaces.** They are convenient, but often add an extra model/browser layer between the user and the process. That can be imprecise, token-expensive, and weak at parallel supervision across several independent agents.
 
-The result: users reach for their phone only when desperate, and reach for a laptop the moment they can. The phone's biggest advantage—being _always nearby_—is wasted.
+The result: users reach for their phone only when desperate, and reach for a laptop the moment they can. The phone's biggest advantage — being _always nearby_ — is wasted, and the user's best control surface for long-running agents remains locked to the desk.
 
 ## 2. Target users
 
-Primary: **developers running long-running terminal workloads on a remote server**, who sometimes need to glance, nudge, or react away from their desk. Typical workloads:
+Primary: **developers running long-running AI agents and terminal workloads on a remote server**, who sometimes need to glance, nudge, or react away from their desk. Typical workloads:
 
 - Supervising AI coding agents (approving tool calls, inspecting diffs, kicking off next prompts).
+- Running several agents in parallel across different repos, branches, or tasks.
+- Sending screenshots, PDFs, logs, or generated files directly into an agent's prompt context.
 - Monitoring builds, tests, deploys, or training runs.
 - Responding to notifications ("your build is waiting on input").
 - Capturing a thought as a quick prompt before it evaporates.
 
 Secondary: same developers on a **tablet or desktop browser** where the codebase is not handy but a terminal session would help. We don't build a separate desktop app; the same responsive frontend covers both.
 
-**Anti-persona**: "I want a full terminal replacement on my phone." We are not that. For heavy terminal work, use a real terminal.
+**Anti-persona**: "I want a full terminal replacement on my phone" or "I want a hosted agent to drive my whole browser for me." We are not that. TM-Agent is for precise supervision and intervention. For heavy terminal work, use a real terminal; for autonomous hosted coding, use the hosted tool.
 
 ## 3. Product principles
 
@@ -131,8 +140,7 @@ Each story maps to one vertical slice; the slice ships when the story's acceptan
 - **Agent-specific UI** (bubble rendering, diff viewers, tool-call collapsibles). See principle 4 explicitly rejects this.
 - **Voice input.** Nice later; not MVP.
 - **Push notifications** for idle session events.
-- **File upload/download** between browser and server. Surveyed in [`docs/research/0008-web-shell-file-transfer-and-sysinfo.md`](research/0008-web-shell-file-transfer-and-sysinfo.md); deferred to post-v1. Preferred direction when we do it: Apache Guacamole's `guacctl`-style shell-triggered download + drag-and-drop upload on a separate HTTP endpoint (not multiplexed into the tmux PTY byte stream).
-- **System status panel** (CPU / memory / load sparklines in the sidebar). Also surveyed in the same research note; Cockpit is the prior-art standard. Deferred to post-v1 as a single compact sparkline strip, not a full host-management panel.
+- **Structured agent transcript parsing.** Agent output is terminal output. We add smart edges around the PTY, not a second UI model for each agent.
 - **Themeable UI.** One dark theme; polish it.
 - **Collaborative editing** / shared cursor across clients.
 
@@ -145,6 +153,8 @@ We are pre-v1. No analytics plumbing in MVP. Success is subjective and measured 
 - The primary author (and the 3–5 friends who get early access) actually reach for this app on their phone when they used to reach for their laptop. If they don't, we iterate.
 - No open bug with severity ≥ "terminal output is wrong" or "wrong session attached".
 - Time-to-first-command from cold-start app open: p50 ≤ 3 seconds, p95 ≤ 6 seconds on 4G.
+- Parallel supervision: a desktop user can keep two to four agents visible and confidently send the next prompt to the intended session.
+- Token discipline: common "what happened?" checks should be answered by reading the raw tmux output, not by asking another model to re-summarize a browser state.
 
 Once usage stabilizes, a lightweight opt-in telemetry ADR will define actual metrics.
 
@@ -160,9 +170,10 @@ Once usage stabilizes, a lightweight opt-in telemetry ADR will define actual met
 - **tmux-mobile** (origin fork). Solved the transport layer. Fails the touch-UX bar we now require. We inherit its backend, replace its frontend.
 - **porterminal**. UI polish but desktop-shaped. We took the "what if it were nice" ambition; the interaction model is our own.
 - **WebSSH / Termius / Blink Shell**. Mobile-native but SSH-only; no tmux-aware navigation.
+- **OpenClaw / Hermes-style hosted agent workspaces.** Higher-level managed agent surfaces. Useful when you want the platform to own the workflow; less appropriate when the user already has several CLI agents running in tmux and wants raw, precise, low-overhead control.
 - **code-server / GitHub Codespaces**. Full IDEs—overkill and slow for the glance/nudge workflow.
-- **Cockpit / Webmin**. The only open-source projects that unify terminal + file transfer + live system metrics. We will borrow from Cockpit's metric-stream UI if/when a sidebar sparkline strip ships, but we're not building a host-management product — see research note 0008.
-- **Apache Guacamole / JumpServer / Next Terminal**. Bastion/audit tooling with mature SFTP-based file transfer. Reference for the file-transfer direction (shell-triggered download + drag-to-upload), not for the audit/recording/compliance features.
+- **Cockpit / Webmin**. Open-source precedents for terminal + file transfer + live system metrics, but they are host-management products. TM-Agent borrows the compact signal style, not the admin-console scope.
+- **Apache Guacamole / JumpServer / Next Terminal**. Bastion/audit tooling with mature file transfer. Reference for safe transfer patterns, not for audit/recording/compliance features.
 
 ## 9. Revisions
 
@@ -171,3 +182,4 @@ Once usage stabilizes, a lightweight opt-in telemetry ADR will define actual met
 | 2026-04-19 | Initial draft (v1).                                                                                                                                                   |
 | 2026-04-20 | S7 clarifies first-load sidebar population; add S8 (connection health + reconnect).                                                                                   |
 | 2026-04-21 | Expand non-goals §5 (file upload/download, system status panel) with prior-art references; add Cockpit / Guacamole / JumpServer to §8. Details in research note 0008. |
+| 2026-04-27 | Reframe public positioning around multi-agent precision control, token discipline, and direct tmux supervision.                                                       |

@@ -1,7 +1,7 @@
 {
   "name": "tm-agent",
   "version": "0.1.0",
-  "description": "Touch-first tmux session manager for phones, tablets, and desktop",
+  "description": "Precision tmux web console for controlling multiple AI agents from phone and desktop",
   "license": "MIT",
   "private": false,
   "type": "module",
@@ -29,7 +29,10 @@
     "web-terminal",
     "ssh",
     "agent",
+    "ai-agent",
+    "codex",
     "claude-code",
+    "gemini-cli",
     "react",
     "xterm"
   ],

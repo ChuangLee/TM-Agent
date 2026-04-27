@@ -1,9 +1,9 @@
 # Deployment
 
-Reference deployment: single Linux host, systemd service bound to
-`127.0.0.1:8767`, nginx reverse proxy with Let's Encrypt via acme.sh.
-The three example files in this directory mirror what we run in
-production.
+Reference deployment for TM-Agent, the precision tmux console for supervising
+long-running AI agents: single Linux host, systemd service bound to
+`127.0.0.1:8767`, nginx reverse proxy with Let's Encrypt via acme.sh. The
+three example files in this directory mirror what we run in production.
 
 ## Fast path: one-liner (recommended)
 
@@ -102,10 +102,11 @@ EOF
 sudo chmod 600 /etc/tm-agent/env
 ```
 
-Record the values—the URL the user opens is
+Record the values — the URL the user opens is
 `https://tmux.example.com/?token=$TOKEN` and the password prompt takes
-`$PASS`. They stay constant across restarts (see ADR on stable-URL env
-vars).
+`$PASS`. After the first successful login, the browser receives an HttpOnly
+session cookie, so the password is not stored in frontend localStorage. Token
+and password stay constant across restarts (see ADR on stable-URL env vars).
 
 ### 3. systemd
 
@@ -181,8 +182,9 @@ Environment=HOME=/home/yourname
 - Service won't start: `sudo journalctl -u tm-agent -f`
 - `/api/config` returns 502: backend crashed or bound to the wrong
   interface. Check the service status.
-- WebSocket closes immediately after auth: token/password mismatch.
-  The env file and the browser URL must agree.
+- WebSocket closes immediately after auth: token/password/session mismatch.
+  The env file and the browser URL must agree; if you rotated the password,
+  clear the site's cookies and sign in again.
 - Scrollback is empty on alt-screen apps (vim, htop, Claude Code TUI):
   this is tmux's alt-screen behavior, not a deployment bug.
   See `docs/adr/0004-native-scroll-via-virtual-container.md`.
