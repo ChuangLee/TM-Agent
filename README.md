@@ -2,11 +2,10 @@
 
 [English](./README.en.md) · **简体中文**
 
-> **智能体时代的精准控制台** —— 在手机上,用 tmux 的方式同时驾驭多个 AI Agent。
+> **智能体时代的精准控制台** —— 随时随地，精准驾驭多个 AI Agent，节省Token，提高效率。
 
-TM-Agent 是一个**触屏优先**的 tmux Web 客户端。它不是又一个 SSH-in-the-browser,也不是把桌面 UI 套层移动样式;它从手机端**反向重写**每一个交互,让你在地铁、咖啡馆、被窝里都能精准多路控制 Claude Code / Codex / Aider / Gemini CLI 等长跑型 agent —— 同一份代码在桌面端自然 reflow 成两栏专业布局,毫无割裂。
+TM-Agent 是一个用户体验优先的 tmux Web 客户端，为Claude Code 等Agent深度优化，相比OpenClaw和Hermes等完全托管的智能体应用，本项目让你随时随地，精准控制多个 AI Agent，直接详细的查看Agent输出，节省Token，提高效率。 
 
-后端 fork 自 [DagsHub/tmux-mobile](https://github.com/DagsHub/tmux-mobile),前端完全重写。
 
 > Status: **Public preview / v0.1.0** · 手机触屏终端 · 桌面多 session 平铺 · 文件面板 · Direct Mode · i18n。规划日志见 [`docs/ROADMAP.md`](./docs/ROADMAP.md)。
 
