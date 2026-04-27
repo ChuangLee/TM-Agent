@@ -14,15 +14,14 @@ TM-Agent 是一个**触屏优先**的 tmux Web 客户端。它不是又一个 SS
 
 ## ✨ 核心亮点
 
+- 📱 **手机友好** —— 触屏滚动，长按复制，竖屏优化 
 - 📎 **附件直投 Agent** —— 输入框直接**粘贴 / 拖入**图片、PDF、代码,上传后自动注入 prompt,告别 `scp`
+- 🪟🪟 **多 Session 同屏** —— 最多2×2布局四个 agent 并行精准观察指挥
 - 📜 **原生滚屏 tmux** —— 滚轮 / 拖选 / Cmd-C 直接复制
-- 🪟🪟 **多 Session 同屏平铺** —— 桌面 1×1 / 1×2 / 2×2 三档,四个 agent 并行精准观察指挥
 - 🗂️ **文件管理** —— 工作成果即时可看，浏览 / 预览 / 上传 / 下载 / 删除
-- ⚡ **智能 Slash 补全** —— 识别 Claude Code / Codex / Gemini / Aider,弹对应命令面板
-- 🚀 **Direct Mode 直通模式** —— 桌面所有键盘事件原生穿透 PTY,vim / Ctrl-C / tmux prefix 全可用
-- 📱 **真·原生触屏** —— 浏览器自带 kinetic 惯性滚动 + 长按冻结取词复制,不写一行 `touchmove`
-- 📈 **系统状态贴脚** —— CPU / 内存 / Load 双 sparkline 实时刷,谁吃爆机器一眼可见
-- 🔐 **生产可部署** —— 一行 `curl` 安装,systemd + nginx + TLS 模板齐全
+- ⚡ **Agent优化** —— 直接新建 Claude Code / Codex / Gemini / Hermes 会话，智能 Slash 补全
+- 🚀 **Direct Mode 直通模式** —— 传统webshell所有功能，键盘事件原生穿透 PTY,vim 全可用
+- 📈 **系统状态** —— CPU / 内存 / Load 双 sparkline 实时观察
 
 ---
 
