@@ -1,0 +1,17 @@
+# /etc/caddy/Caddyfile - root-domain reverse proxy for TM-Agent.
+# Backend expected at: http://127.0.0.1:8767
+#
+# Open:
+#   https://tmux.example.com/?token=<TM_AGENT_TOKEN>
+
+tmux.example.com {
+	encode zstd gzip
+
+	request_body {
+		max_size 20MB
+	}
+
+	reverse_proxy 127.0.0.1:8767 {
+		header_up Host {host}
+	}
+}

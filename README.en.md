@@ -137,10 +137,12 @@ curl -fsSL https://raw.githubusercontent.com/ChuangLee/TM-Agent/main/scripts/boo
 
 `bootstrap.sh` installs `git` if needed, clones the repo to `/opt/tm-agent`, and hands off to `scripts/install.sh` (idempotent — re-run = upgrade). `install.sh` bootstraps tmux, openssl, native build tools, and Node.js 20+ on common Linux distros, then does the rest: `npm install` → `npm run build` → `npm prune --omit=dev` → mint random token / password → write `/etc/tm-agent/env` (mode 600) → install the systemd unit → `systemctl enable --now`. `--workspace-root` constrains the session-wizard directory picker to that path (ADR-0017).
 
-The one thing the script does not do is nginx + TLS — every reverse proxy setup is too different to canonicalize. Templates:
+The one thing the script does not do is nginx / Caddy + TLS — every reverse proxy setup is too different to canonicalize. The backend listens on `http://127.0.0.1:8767/?token=<token>` by default. Templates:
 
 - Standalone subdomain (`https://tmux.host.example/`): [`docs/deployment/nginx.conf.example`](./docs/deployment/nginx.conf.example)
+- Caddy standalone subdomain: [`docs/deployment/Caddyfile.example`](./docs/deployment/Caddyfile.example)
 - Subpath (`https://host.example/tmux/`): [`docs/deployment/nginx.conf.example.subpath`](./docs/deployment/nginx.conf.example.subpath) — pair with `--base-path /tmux` at install time (ADR-0018)
+- Caddy subpath: [`docs/deployment/Caddyfile.example.subpath`](./docs/deployment/Caddyfile.example.subpath)
 
 **Already cloned the repo?** Just run `sudo ./scripts/install.sh --workspace-root ~/repos`. Full manual steps in [`docs/deployment/README.md`](./docs/deployment/README.md).
 

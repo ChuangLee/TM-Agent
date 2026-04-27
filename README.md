@@ -132,10 +132,12 @@ curl -fsSL https://raw.githubusercontent.com/ChuangLee/TM-Agent/main/scripts/boo
 
 `bootstrap.sh` 会在缺少 `git` 时自动安装，然后把仓库 clone 到 `/opt/tm-agent` 再 hand off 给 `scripts/install.sh`（幂等，重跑 = 升级）。`install.sh` 会在常见 Linux 发行版上自动补齐 tmux、openssl、原生构建工具和 Node.js 20+，然后执行：`npm install` → `npm run build` → `npm prune --omit=dev` → 随机生成 token / password → 写 `/etc/tm-agent/env`（600）→ 装 systemd unit → `systemctl enable --now`。`--workspace-root` 把 session wizard 的目录选择器限制在该路径以下（ADR-0017）。
 
-脚本不做的只有 nginx + TLS —— 每家反代配置差异太大，保留手动。模板:
+脚本不做的只有 nginx / Caddy + TLS —— 每家反代配置差异太大，保留手动。后端默认监听 `http://127.0.0.1:8767/?token=<token>`，反代模板：
 
 - 独立子域名（`https://tmux.host.example/`）：[`docs/deployment/nginx.conf.example`](./docs/deployment/nginx.conf.example)
+- Caddy 独立子域名：[`docs/deployment/Caddyfile.example`](./docs/deployment/Caddyfile.example)
 - 子路径（`https://host.example/tmux/`）：[`docs/deployment/nginx.conf.example.subpath`](./docs/deployment/nginx.conf.example.subpath) —— 搭配安装时加 `--base-path /tmux`（ADR-0018）
+- Caddy 子路径：[`docs/deployment/Caddyfile.example.subpath`](./docs/deployment/Caddyfile.example.subpath)
 
 **已 clone 过仓库**直接 `sudo ./scripts/install.sh --workspace-root ~/repos` 即可；**完整手动步骤**见 [`docs/deployment/README.md`](./docs/deployment/README.md)。
 

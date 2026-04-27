@@ -3,7 +3,7 @@
 Reference deployment for TM-Agent, the precision tmux console for supervising
 long-running AI agents: single Linux host, systemd service bound to
 `127.0.0.1:8767`, nginx reverse proxy with Let's Encrypt via acme.sh. The
-three example files in this directory mirror what we run in production.
+example files in this directory cover nginx, Caddy, systemd, and env setup.
 
 ## Fast path: one-liner (recommended)
 
@@ -38,7 +38,8 @@ less bootstrap.sh
 sudo bash bootstrap.sh
 ```
 
-Skip ahead to step 4 (nginx + TLS) after the installer finishes.
+Skip ahead to [Reverse proxy](#reverse-proxy-nginx--caddy) after the installer
+finishes.
 
 ### Fast path: in-repo
 
@@ -51,6 +52,87 @@ sudo ./scripts/install.sh --workspace-root ~/repos
 ```
 
 The manual path below is kept for operators who want to own each step.
+
+## Reverse proxy: nginx / Caddy
+
+After the installer succeeds, TM-Agent listens on:
+
+```text
+http://127.0.0.1:8767/?token=<TM_AGENT_TOKEN>
+```
+
+Do not expose port `8767` directly to the public internet. Put nginx, Caddy, or
+another TLS reverse proxy in front.
+
+### nginx: dedicated subdomain
+
+Use this when TM-Agent owns a hostname such as `https://tmux.example.com/`.
+
+Create the WebSocket upgrade map once:
+
+```nginx
+# /etc/nginx/conf.d/00-websocket-upgrade.conf
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+```
+
+Then proxy the site:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name tmux.example.com;
+
+    ssl_certificate     /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
+
+    client_max_body_size 20m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8767;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_buffering off;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+}
+```
+
+Full template: [`nginx.conf.example`](./nginx.conf.example).
+
+### Caddy: dedicated subdomain
+
+Caddy handles TLS and WebSocket upgrades automatically:
+
+```caddyfile
+tmux.example.com {
+    encode zstd gzip
+
+    request_body {
+        max_size 20MB
+    }
+
+    reverse_proxy 127.0.0.1:8767 {
+        header_up Host {host}
+    }
+}
+```
+
+Full template: [`Caddyfile.example`](./Caddyfile.example).
+
+Open:
+
+```text
+https://tmux.example.com/?token=<TM_AGENT_TOKEN>
+```
 
 ## Subpath deploy (ADR-0018)
 
@@ -74,6 +156,10 @@ your nginx template. The prefix you put in nginx (`location /tmux/`)
 and the prefix you pass to the installer (`--base-path /tmux`) must
 match; the installer writes `TM_AGENT_BASE_PATH` into
 `/etc/tm-agent/env` so the systemd unit picks it up on every restart.
+
+Caddy subpath template: [`Caddyfile.example.subpath`](./Caddyfile.example.subpath).
+Use `handle /tmux/*`, not `handle_path`, because TM-Agent expects the prefix to
+remain present when `--base-path /tmux` is configured.
 
 ## Manual one-time setup
 
