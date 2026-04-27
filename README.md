@@ -42,23 +42,6 @@ TM-Agent 是一个用户体验优先的 tmux Web 客户端，为 Claude Code、C
 
 ---
 
-## 为什么不是又一个 webshell
-
-把整个浏览器交给一个 Agent（Claude.ai、ChatGPT Atlas、Comet 这类 agentic browser，或更上层的托管 Agent 工作台），看似酷炫，实则代价很高：
-
-- **Token 巨亏** —— 页面状态、DOM、截图、转述都可能再次进入模型上下文，账单和延迟同步起飞。
-- **不够精准** —— 一个 tab、一个 Agent、一根线程。无法同时盯三个任务、两个仓库、四个分支。
-- **状态脆弱** —— tab 一关、网络一抖、电量一没，Agent 上下文和现场感就容易断。
-- **手机绝望** —— 移动端体验近乎不可用，而你 70% 的碎片时间都在手机上。
-
-**真正的答案是 tmux。** 一个 Agent 一个 session，多开、并行、可 detach、可 reattach、按需切换。tmux 用几十年证明了它的 session 模型本来就是为长跑型进程设计的 —— 而现代 Agent 恰恰就是长跑型进程。
-
-TM-Agent 把这种精准多路控制能力，搬到你口袋里那块**竖屏**上，也扩展到桌面 2×2 多 Agent 指挥台。完整设计动机见 [`docs/PRD.md`](./docs/PRD.md) 与 [`docs/DESIGN_PRINCIPLES.md`](./docs/DESIGN_PRINCIPLES.md)。
-
-> 它**不是** AI 专用工具，但它**懂 AI**。一个跑 `claude` / `codex` / `aider` / `vim` / `htop` / 裸 shell 的 tmux session，在仓库眼里结构完全等价 —— 但 Compose Bar 会针对当前 pane 里跑的是哪个 Agent 给出对应的快捷命令。核心通用、外围贴心，见 [Design Principle 4](./docs/DESIGN_PRINCIPLES.md)。
-
----
-
 ## 功能详解
 
 ### 📎 附件直投 —— 粘贴 / 拖一张图，Agent 看图 Debug

@@ -47,23 +47,6 @@ Backend forked from [DagsHub/tmux-mobile](https://github.com/DagsHub/tmux-mobile
 
 ---
 
-## Why not just another webshell
-
-Handing your whole browser tab to a single supervising agent (Claude.ai, ChatGPT Atlas, Comet, agentic browsers, or hosted agent workspaces) looks slick and gets expensive fast:
-
-- **Token-wasteful.** Page state, DOM trees, screenshots, and summaries can all be pushed back into model context. Latency and bill climb together.
-- **Imprecise.** One tab, one agent, one thread. You cannot watch three tasks across two repos on four branches at once.
-- **Fragile.** Close the tab, drop your Wi-Fi, lose the battery — the sense of agent state is gone.
-- **Hostile on phone.** Mobile UX is an afterthought, and that is where much of your idle time lives.
-
-**The right answer is tmux.** One agent per session. Multiplex, parallelize, detach, reattach, switch on demand. tmux's session model has been validated for decades on exactly this shape of workload — long-running processes — and modern agents are _precisely_ long-running processes.
-
-TM-Agent brings that precision multiplexing onto the **vertical glass slab in your pocket** and expands it into a 2×2 desktop agent command deck when you are back at a keyboard. Full design rationale in [`docs/PRD.md`](./docs/PRD.md) and [`docs/DESIGN_PRINCIPLES.md`](./docs/DESIGN_PRINCIPLES.md).
-
-> It is **not** an AI-specific tool, but it **understands AI**. To the codebase, a tmux session running `claude` / `codex` / `aider` / `vim` / `htop` / a bare shell is structurally identical — but the Compose Bar offers shortcuts tailored to whichever agent the current pane is hosting. Generic core, considerate edges — see [Design Principle 4](./docs/DESIGN_PRINCIPLES.md).
-
----
-
 ## Feature deep-dive
 
 ### 📎 Paste / drop, agent reads — no more `scp`
