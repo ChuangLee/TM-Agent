@@ -12,6 +12,19 @@ test-results/
 playwright-report/
 debug/
 scripts/debug-*.mjs
+
+# Local AI-assistant instructions/config. Keep these machine-specific files out
+# of the public repo; product-facing docs belong under docs/ instead.
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+codex.md
 .claude/
+.codex/
+.cursor/
+.cursorrules
+.windsurf/
+.windsurfrules
+
 .idea/
 .vscode/
