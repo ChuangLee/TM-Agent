@@ -300,6 +300,17 @@ export const createTMAgentServer = (
       return;
     }
 
+    // Do not serve the SPA shell for missing built assets. Browsers enforce
+    // strict MIME checks for module scripts, so returning index.html for a
+    // stale `/assets/*.js` request produces a confusing runtime error instead
+    // of a clear 404.
+    const pathWithinMount =
+      basePath && req.path.startsWith(`${basePath}/`) ? req.path.slice(basePath.length) : req.path;
+    if (pathWithinMount.startsWith("/assets/")) {
+      res.status(404).end();
+      return;
+    }
+
     const html = await loadIndexHtml();
     if (!html) {
       res.status(500).send("Frontend not built. Run npm run build:frontend");
