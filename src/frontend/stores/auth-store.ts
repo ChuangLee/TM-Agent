@@ -20,30 +20,9 @@ export interface AuthState {
 const STORAGE_KEY = "tm-agent-password";
 const OLD_STORAGE_KEY = "agent-tmux-password";
 
-const readStoredPassword = (): string => {
+const clearStoredPassword = (): void => {
   try {
-    const current = globalThis.localStorage?.getItem(STORAGE_KEY);
-    if (current) return current;
-
-    const old = globalThis.localStorage?.getItem(OLD_STORAGE_KEY);
-    if (old) {
-      globalThis.localStorage?.setItem(STORAGE_KEY, old);
-      globalThis.localStorage?.removeItem(OLD_STORAGE_KEY);
-      return old;
-    }
-    return "";
-  } catch {
-    return "";
-  }
-};
-
-const writeStoredPassword = (password: string): void => {
-  try {
-    if (password) {
-      globalThis.localStorage?.setItem(STORAGE_KEY, password);
-    } else {
-      globalThis.localStorage?.removeItem(STORAGE_KEY);
-    }
+    globalThis.localStorage?.removeItem(STORAGE_KEY);
     globalThis.localStorage?.removeItem(OLD_STORAGE_KEY);
   } catch {
     // ignore storage failures (private mode, quota)
@@ -58,16 +37,18 @@ const readTokenFromUrl = (): string => {
   }
 };
 
+clearStoredPassword();
+
 export const useAuthStore = create<AuthState>((set) => ({
   token: readTokenFromUrl(),
-  password: readStoredPassword(),
+  password: "",
   passwordRequired: false,
   phase: "probing",
   errorMessage: "",
   clientId: "",
   setToken: (token) => set({ token }),
   setPassword: (password) => {
-    writeStoredPassword(password);
+    clearStoredPassword();
     set({ password });
   },
   setPasswordRequired: (passwordRequired) => set({ passwordRequired }),

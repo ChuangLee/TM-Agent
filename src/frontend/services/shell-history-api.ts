@@ -7,13 +7,11 @@ export interface ShellHistoryEntry {
 }
 
 const TOKEN_HEADER = "x-tm-agent-token";
-const PASSWORD_HEADER = "x-tm-agent-password";
 
 const authHeaders = (): HeadersInit => {
-  const { token, password } = useAuthStore.getState();
+  const { token } = useAuthStore.getState();
   const headers: Record<string, string> = {};
   if (token) headers[TOKEN_HEADER] = token;
-  if (password) headers[PASSWORD_HEADER] = password;
   return headers;
 };
 

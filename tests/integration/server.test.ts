@@ -27,6 +27,7 @@ describe("TM-Agent server", () => {
   let tmux: FakeTmuxGateway;
   let ptyFactory: FakePtyFactory;
   let baseWsUrl: string;
+  let baseHttpUrl: string;
 
   const authControl = async (
     control: WebSocket,
@@ -84,6 +85,7 @@ describe("TM-Agent server", () => {
     await runningServer.start();
     const address = runningServer.server.address() as AddressInfo;
     baseWsUrl = `ws://127.0.0.1:${address.port}`;
+    baseHttpUrl = `http://127.0.0.1:${address.port}`;
   };
 
   beforeEach(async () => {
@@ -104,6 +106,37 @@ describe("TM-Agent server", () => {
     );
     expect(response.reason).toContain("invalid token");
 
+    control.close();
+  });
+
+  test("issues HttpOnly password session cookie for subsequent websocket auth", async () => {
+    await runningServer.stop();
+    await startWithSessions(["main"], { password: "pw" });
+
+    const login = await fetch(`${baseHttpUrl}/api/auth/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: "test-token", password: "pw" })
+    });
+    expect(login.status).toBe(200);
+    const cookie = login.headers.get("set-cookie") ?? "";
+    expect(cookie).toContain("tm_agent_session=");
+    expect(cookie).toContain("HttpOnly");
+
+    const control = new WebSocket(`${baseWsUrl}/ws/control`, {
+      headers: { cookie: cookie.split(";")[0] ?? "" }
+    });
+    await new Promise<void>((resolve, reject) => {
+      control.once("open", resolve);
+      control.once("error", reject);
+    });
+    control.send(JSON.stringify({ type: "auth", token: "test-token" }));
+
+    const response = await waitForMessage<{ type: string }>(
+      control,
+      (msg) => msg.type === "auth_ok"
+    );
+    expect(response.type).toBe("auth_ok");
     control.close();
   });
 

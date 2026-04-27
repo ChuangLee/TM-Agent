@@ -2,7 +2,6 @@ import { apiUrl } from "../lib/base-url.js";
 import { useAuthStore } from "../stores/auth-store.js";
 
 const TOKEN_HEADER = "x-tm-agent-token";
-const PASSWORD_HEADER = "x-tm-agent-password";
 
 export interface DirEntry {
   name: string;
@@ -32,10 +31,9 @@ export class FsPickerError extends Error {
 }
 
 const authHeaders = (): HeadersInit => {
-  const { token, password } = useAuthStore.getState();
+  const { token } = useAuthStore.getState();
   const headers: Record<string, string> = {};
   if (token) headers[TOKEN_HEADER] = token;
-  if (password) headers[PASSWORD_HEADER] = password;
   return headers;
 };
 

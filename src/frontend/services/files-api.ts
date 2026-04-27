@@ -28,7 +28,6 @@ export interface FileMeta {
 }
 
 const TOKEN_HEADER = "x-tm-agent-token";
-const PASSWORD_HEADER = "x-tm-agent-password";
 
 export class FilesApiError extends Error {
   public constructor(
@@ -42,23 +41,22 @@ export class FilesApiError extends Error {
 }
 
 const authHeaders = (): HeadersInit => {
-  const { token, password } = useAuthStore.getState();
+  const { token } = useAuthStore.getState();
   const headers: Record<string, string> = {};
   if (token) headers[TOKEN_HEADER] = token;
-  if (password) headers[PASSWORD_HEADER] = password;
   return headers;
 };
 
 /**
- * Build a URL with token/password query params instead of headers. Required
+ * Build a URL with token query param instead of headers. Required
  * for `<img src>` / `<iframe src>` / `<video src>` consumption since those
- * tags can't attach custom headers. Treat the result as read-only.
+ * tags can't attach custom headers. The password factor is carried by the
+ * HttpOnly session cookie.
  */
 export const buildAuthedMediaUrl = (path: string, query: Record<string, string>): string => {
-  const { token, password } = useAuthStore.getState();
+  const { token } = useAuthStore.getState();
   const usp = new URLSearchParams({ ...query });
   if (token) usp.set("token", token);
-  if (password) usp.set("password", password);
   return apiUrl(`${path}?${usp.toString()}`);
 };
 
@@ -172,9 +170,8 @@ export function uploadFile(file: File, opts: UploadOptions): Promise<UploadResul
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", apiUrl(`api/files/upload?${usp.toString()}`));
-    const { token, password } = useAuthStore.getState();
+    const { token } = useAuthStore.getState();
     if (token) xhr.setRequestHeader(TOKEN_HEADER, token);
-    if (password) xhr.setRequestHeader(PASSWORD_HEADER, password);
 
     xhr.upload.onprogress = (e) => {
       if (opts.onProgress && e.lengthComputable) {

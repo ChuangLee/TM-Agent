@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import http from "node:http";
+import type { IncomingMessage } from "node:http";
 import path from "node:path";
 import express from "express";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -130,6 +131,34 @@ const sendJson = (socket: WebSocket, payload: ControlServerMessage): void => {
   }
 };
 
+const readCookie = (req: IncomingMessage, name: string): string | undefined => {
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return undefined;
+  for (const part of cookieHeader.split(";")) {
+    const [rawKey, ...rawValue] = part.trim().split("=");
+    if (rawKey === name) return decodeURIComponent(rawValue.join("="));
+  }
+  return undefined;
+};
+
+const shouldUseSecureCookie = (req: express.Request): boolean =>
+  req.secure || req.headers["x-forwarded-proto"] === "https";
+
+const setSessionCookie = (
+  req: express.Request,
+  res: express.Response,
+  authService: AuthService,
+  session: string
+): void => {
+  res.cookie(AuthService.sessionCookieName, session, {
+    httpOnly: true,
+    secure: shouldUseSecureCookie(req),
+    sameSite: "lax",
+    path: "/",
+    maxAge: authService.sessionMaxAgeSeconds() * 1000
+  });
+};
+
 const summarizeClientMessage = (message: ControlClientMessage): string => {
   if (message.type === "auth") {
     return JSON.stringify({
@@ -258,6 +287,29 @@ export const createTMAgentServer = (
       workspaceRoot: config.workspaceRoot,
       basePath
     });
+  });
+
+  app.post(mount("/api/auth/session"), (req, res) => {
+    const body = (req.body ?? {}) as { token?: unknown; password?: unknown };
+    const result = authService.issueSession({
+      token: typeof body.token === "string" ? body.token : undefined,
+      password: typeof body.password === "string" ? body.password : undefined
+    });
+    if (!result.ok || !result.session) {
+      res.status(401).json({ ok: false, error: result.reason ?? "unauthorized" });
+      return;
+    }
+    setSessionCookie(req, res, authService, result.session);
+    res.json({ ok: true });
+  });
+
+  app.post(mount("/api/auth/session/check"), (req, res) => {
+    const body = (req.body ?? {}) as { token?: unknown };
+    const result = authService.verify({
+      token: typeof body.token === "string" ? body.token : undefined,
+      session: readCookie(req, AuthService.sessionCookieName)
+    });
+    res.status(result.ok ? 200 : 401).json({ ok: result.ok });
   });
 
   // File panel API (ADR-0012). Mounted before the static + fallback routes so
@@ -785,7 +837,7 @@ export const createTMAgentServer = (
     context.slots.clear();
   };
 
-  controlWss.on("connection", (socket) => {
+  controlWss.on("connection", (socket, req) => {
     const context: ControlContext = {
       socket,
       authed: false,
@@ -816,7 +868,8 @@ export const createTMAgentServer = (
 
           const authResult = authService.verify({
             token: message.token,
-            password: message.password
+            password: message.password,
+            session: readCookie(req, AuthService.sessionCookieName)
           });
           if (!authResult.ok) {
             logger.log("control ws auth failed", context.clientId, authResult.reason ?? "unknown");
@@ -911,7 +964,7 @@ export const createTMAgentServer = (
     });
   });
 
-  terminalWss.on("connection", (socket) => {
+  terminalWss.on("connection", (socket, req) => {
     const ctx: DataContext = { socket, authed: false, slot: 0 };
     terminalClients.add(ctx);
     logger.log("terminal ws connected");
@@ -936,7 +989,8 @@ export const createTMAgentServer = (
 
         const authResult = authService.verify({
           token: authMessage.token,
-          password: authMessage.password
+          password: authMessage.password,
+          session: readCookie(req, AuthService.sessionCookieName)
         });
         if (!authResult.ok) {
           logger.log("terminal ws auth failed", authResult.reason ?? "unknown");

@@ -8,6 +8,7 @@ import { useSlotFocusShortcuts } from "../hooks/use-slot-focus-shortcuts.js";
 import { useFilePanelPrefetch } from "../features/files/use-file-panel.js";
 import { useVisualViewportInset } from "../hooks/use-visual-viewport-inset.js";
 import { fetchServerConfig } from "../services/config-api.js";
+import { hasPasswordSession } from "../services/auth-api.js";
 import { useServerConfigStore } from "../stores/server-config-store.js";
 import { TopBar } from "../features/shell/TopBar.js";
 import { MultiSurface } from "../features/terminal/MultiSurface.js";
@@ -55,15 +56,23 @@ export function App(): ReactElement {
       return;
     }
     void fetchServerConfig()
-      .then((config) => {
+      .then(async (config) => {
         setPasswordRequired(config.passwordRequired);
         if (config.workspaceRoot) {
           useServerConfigStore.getState().setWorkspaceRoot(config.workspaceRoot);
         }
-        if (config.passwordRequired && !password) {
-          setPhase("needs-password");
-        } else {
+        if (!config.passwordRequired) {
           setPhase("authenticating");
+          return;
+        }
+        if (password) {
+          setPhase("authenticating");
+          return;
+        }
+        if (await hasPasswordSession(token)) {
+          setPhase("authenticating");
+        } else {
+          setPhase("needs-password");
         }
       })
       .catch((e: unknown) => {
