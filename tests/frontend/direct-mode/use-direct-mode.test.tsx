@@ -5,6 +5,7 @@ import { useDirectMode } from "../../../src/frontend/features/direct-mode/use-di
 
 function resetGlobals(): void {
   window.history.replaceState(null, "", "/");
+  document.getSelection()?.removeAllRanges();
   // Force matchMedia to report desktop.
   window.matchMedia = ((q: string) => ({
     matches: /min-width: 820/.test(q) || /pointer: fine/.test(q),
@@ -193,6 +194,66 @@ describe("useDirectMode", () => {
       })
     );
     expect(onSendBytes).toHaveBeenCalledWith("\x03");
+  });
+
+  test("copy event with no selection falls back to SIGINT for Windows Ctrl+C", () => {
+    vi.useFakeTimers();
+    const onSendBytes = vi.fn();
+    const { result } = renderHook(() => useDirectMode({ onSendBytes }));
+    act(() => result.current.enter());
+    act(() => vi.advanceTimersByTime(200));
+
+    const evt = new Event("copy", { bubbles: true, cancelable: true });
+    act(() => {
+      document.dispatchEvent(evt);
+    });
+
+    expect(evt.defaultPrevented).toBe(true);
+    expect(onSendBytes).toHaveBeenCalledWith("\x03");
+  });
+
+  test("Cmd+C and Ctrl+Shift+C copy events keep browser copy semantics", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const onSendBytes = vi.fn();
+    const { result } = renderHook(() => useDirectMode({ onSendBytes }));
+    act(() => result.current.enter());
+    act(() => vi.advanceTimersByTime(200));
+
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "c",
+          metaKey: true,
+          bubbles: true,
+          cancelable: true
+        })
+      );
+    });
+    const cmdCopy = new Event("copy", { bubbles: true, cancelable: true });
+    act(() => {
+      document.dispatchEvent(cmdCopy);
+    });
+
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "C",
+          ctrlKey: true,
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true
+        })
+      );
+    });
+    const ctrlShiftCopy = new Event("copy", { bubbles: true, cancelable: true });
+    act(() => {
+      document.dispatchEvent(ctrlShiftCopy);
+    });
+
+    expect(cmdCopy.defaultPrevented).toBe(false);
+    expect(ctrlShiftCopy.defaultPrevented).toBe(false);
+    expect(onSendBytes).not.toHaveBeenCalled();
   });
 
   test("paste event forwards clipboard text as bytes with CR normalization", () => {

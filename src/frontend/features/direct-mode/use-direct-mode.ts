@@ -19,6 +19,8 @@ export interface UseDirectModeResult {
   toggle(): void;
 }
 
+const BROWSER_COPY_GRACE_MS = 1000;
+
 function detectAvailable(): boolean {
   if (typeof window === "undefined") return false;
   try {
@@ -43,6 +45,7 @@ export function useDirectMode(args: UseDirectModeArgs): UseDirectModeResult {
   const [status, setStatus] = useState<DirectModeStatus>("idle");
   const statusRef = useRef<DirectModeStatus>("idle");
   const onSendRef = useRef(onSendBytes);
+  const browserCopyKeydownAtRef = useRef(0);
   onSendRef.current = onSendBytes;
   statusRef.current = status;
 
@@ -105,6 +108,15 @@ export function useDirectMode(args: UseDirectModeArgs): UseDirectModeResult {
     if (status !== "active" && status !== "entering") return;
 
     const handler = (e: KeyboardEvent): void => {
+      const key = (e.key ?? "").toLowerCase();
+      if (
+        key === "c" &&
+        ((e.metaKey && !e.ctrlKey && !e.altKey) ||
+          (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey))
+      ) {
+        browserCopyKeydownAtRef.current = Date.now();
+      }
+
       // Ctrl+] is the exit signal.
       if (e.ctrlKey && !e.altKey && !e.metaKey && (e.code === "BracketRight" || e.key === "]")) {
         e.preventDefault();
@@ -134,6 +146,31 @@ export function useDirectMode(args: UseDirectModeArgs): UseDirectModeResult {
       document.removeEventListener("keydown", handler, { capture: true });
     };
   }, [status, exit]);
+
+  // Windows Chromium can route Ctrl+C through the browser's native `copy`
+  // command when focus is sitting in editable chrome. If our keydown handler
+  // did not get a chance to translate it, a copy event with no text selection
+  // is the best remaining signal for terminal SIGINT. Explicit browser-copy
+  // chords (Cmd+C / Ctrl+Shift+C) and real text selections keep native copy.
+  useEffect(() => {
+    if (status !== "active" && status !== "entering") return;
+
+    const handler = (e: ClipboardEvent): void => {
+      const selection = document.getSelection();
+      const hasSelection = Boolean(selection && !selection.isCollapsed && selection.toString());
+      const recentBrowserCopy =
+        Date.now() - browserCopyKeydownAtRef.current < BROWSER_COPY_GRACE_MS;
+      if (hasSelection || recentBrowserCopy) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onSendRef.current("\x03");
+    };
+
+    document.addEventListener("copy", handler, { capture: true });
+    return () => {
+      document.removeEventListener("copy", handler, { capture: true });
+    };
+  }, [status]);
 
   // Paste forwarding: Cmd+V / Ctrl+Shift+V fall through keydownToBytes, so
   // the browser fires a native `paste` event on document. Intercept,
