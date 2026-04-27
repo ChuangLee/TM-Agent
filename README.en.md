@@ -135,7 +135,7 @@ curl -fsSL https://raw.githubusercontent.com/ChuangLee/TM-Agent/main/scripts/boo
   | sudo bash -s -- --workspace-root /root/repos
 ```
 
-`bootstrap.sh` clones the repo to `/opt/tm-agent` and hands off to `scripts/install.sh` (idempotent — re-run = upgrade). `install.sh` does the rest: `npm install` → `npm run build` → `npm prune --omit=dev` → mint random token / password → write `/etc/tm-agent/env` (mode 600) → install the systemd unit → `systemctl enable --now`. `--workspace-root` constrains the session-wizard directory picker to that path (ADR-0017).
+`bootstrap.sh` installs `git` if needed, clones the repo to `/opt/tm-agent`, and hands off to `scripts/install.sh` (idempotent — re-run = upgrade). `install.sh` bootstraps tmux, openssl, native build tools, and Node.js 20+ on common Linux distros, then does the rest: `npm install` → `npm run build` → `npm prune --omit=dev` → mint random token / password → write `/etc/tm-agent/env` (mode 600) → install the systemd unit → `systemctl enable --now`. `--workspace-root` constrains the session-wizard directory picker to that path (ADR-0017).
 
 The one thing the script does not do is nginx + TLS — every reverse proxy setup is too different to canonicalize. Templates:
 

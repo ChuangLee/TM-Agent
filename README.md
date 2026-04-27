@@ -130,7 +130,7 @@ curl -fsSL https://raw.githubusercontent.com/ChuangLee/TM-Agent/main/scripts/boo
   | sudo bash -s -- --workspace-root /root/repos
 ```
 
-`bootstrap.sh` 把仓库 clone 到 `/opt/tm-agent` 再 hand off 给 `scripts/install.sh`（幂等，重跑 = 升级）。`install.sh` 自动执行：`npm install` → `npm run build` → `npm prune --omit=dev` → 随机生成 token / password → 写 `/etc/tm-agent/env`（600）→ 装 systemd unit → `systemctl enable --now`。`--workspace-root` 把 session wizard 的目录选择器限制在该路径以下（ADR-0017）。
+`bootstrap.sh` 会在缺少 `git` 时自动安装，然后把仓库 clone 到 `/opt/tm-agent` 再 hand off 给 `scripts/install.sh`（幂等，重跑 = 升级）。`install.sh` 会在常见 Linux 发行版上自动补齐 tmux、openssl、原生构建工具和 Node.js 20+，然后执行：`npm install` → `npm run build` → `npm prune --omit=dev` → 随机生成 token / password → 写 `/etc/tm-agent/env`（600）→ 装 systemd unit → `systemctl enable --now`。`--workspace-root` 把 session wizard 的目录选择器限制在该路径以下（ADR-0017）。
 
 脚本不做的只有 nginx + TLS —— 每家反代配置差异太大，保留手动。模板:
 

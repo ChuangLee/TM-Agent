@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # TM-Agent installer — turns the 5-step docs/deployment/README dance
 # into a single interactive command. Handles:
+#   - system package bootstrap for tmux/openssl/native npm builds
+#   - Node.js 20+ bootstrap on common Linux distributions
 #   - npm install + build + prune dev dependencies
 #   - /etc/tm-agent/env with randomly generated TOKEN + PASSWORD
 #   - systemd unit (installed, daemon-reloaded, enabled, started)
@@ -9,7 +11,6 @@
 # Non-goals (on purpose):
 #   - nginx + TLS: every environment's reverse proxy is different;
 #     keep following docs/deployment/README.md for that leg.
-#   - npm / node bootstrapping: assume a recent Node on PATH.
 #
 # Usage:
 #   sudo ./scripts/install.sh                      # interactive
@@ -45,6 +46,89 @@ info()  { printf '%s→%s %s\n' "$C_BLU" "$C_RST" "$*"; }
 ok()    { printf '%s✓%s %s\n' "$C_GRN" "$C_RST" "$*"; }
 warn()  { printf '%s!%s %s\n' "$C_YEL" "$C_RST" "$*" >&2; }
 die()   { printf '%s✗%s %s\n' "$C_RED" "$C_RST" "$*" >&2; exit 1; }
+
+node_major() {
+  command -v node >/dev/null 2>&1 || return 1
+  node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null
+}
+
+install_system_deps() {
+  info "installing system dependencies"
+  if command -v apt-get >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y ca-certificates curl gnupg openssl tmux build-essential python3
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y ca-certificates curl openssl tmux make gcc gcc-c++ python3
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y ca-certificates curl openssl tmux make gcc gcc-c++ python3
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --no-cache ca-certificates curl openssl tmux build-base python3
+  else
+    die "unsupported package manager — install Node.js 20+, npm, tmux, openssl, and build tools manually, then rerun"
+  fi
+  ok "system dependencies installed"
+}
+
+install_node_apt() {
+  export DEBIAN_FRONTEND=noninteractive
+  install -d -m 0755 /etc/apt/keyrings
+  rm -f /etc/apt/keyrings/nodesource.gpg
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  chmod 0644 /etc/apt/keyrings/nodesource.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list
+  apt-get update
+  apt-get install -y nodejs
+}
+
+install_node_rpm() {
+  local installer
+  installer="$(mktemp)"
+  curl -fsSL https://rpm.nodesource.com/setup_20.x -o "$installer"
+  bash "$installer"
+  rm -f "$installer"
+  if command -v dnf >/dev/null 2>&1; then
+    dnf install -y nodejs
+  else
+    yum install -y nodejs
+  fi
+}
+
+install_node_alpine() {
+  apk add --no-cache nodejs npm
+}
+
+ensure_node() {
+  local major
+  major="$(node_major || true)"
+  if [ -n "$major" ] && [ "$major" -ge 20 ] && command -v npm >/dev/null 2>&1; then
+    ok "Node.js $(node -v) detected"
+    return
+  fi
+
+  if [ -n "$major" ]; then
+    warn "Node.js $(node -v) is too old; installing Node.js 20+"
+  else
+    warn "Node.js not found; installing Node.js 20+"
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    install_node_apt
+  elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+    install_node_rpm
+  elif command -v apk >/dev/null 2>&1; then
+    install_node_alpine
+  else
+    die "unsupported package manager — install Node.js 20+ and npm manually, then rerun"
+  fi
+
+  major="$(node_major || true)"
+  [ -n "$major" ] && [ "$major" -ge 20 ] || die "Node.js 20+ install did not succeed"
+  command -v npm >/dev/null 2>&1 || die "npm not found after Node.js install"
+  ok "Node.js $(node -v) installed"
+}
 
 usage() {
   cat <<EOF
@@ -82,13 +166,20 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+# When invoked via `curl ... | sudo bash`, stdin is the consumed pipe rather
+# than an interactive terminal. In that mode prompting would read EOF and abort.
+if [ ! -t 0 ]; then
+  NON_INTERACTIVE=1
+fi
+
 # ── preflight ─────────────────────────────────────────────────────────
 [ "$(id -u)" -eq 0 ] || die "must run as root (try: sudo $0)"
 
-command -v node >/dev/null 2>&1 || die "node not found on PATH — install Node 20+ first"
-command -v npm >/dev/null 2>&1 || die "npm not found on PATH"
 command -v systemctl >/dev/null 2>&1 || die "systemctl not found — this installer targets systemd hosts"
-command -v openssl >/dev/null 2>&1 || die "openssl not found — needed to generate token/password"
+install_system_deps
+command -v openssl >/dev/null 2>&1 || die "openssl not found after dependency install"
+command -v tmux >/dev/null 2>&1 || die "tmux not found after dependency install"
+ensure_node
 
 # Install dir = the repo this script lives in (canonical absolute path).
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

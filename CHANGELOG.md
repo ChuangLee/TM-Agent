@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Public documentation now frames TM-Agent as a precision console for
   supervising multiple AI agents directly through tmux.
+- The one-line installer now bootstraps `git`, tmux, openssl, native build
+  tools, and Node.js 20+ on common Linux distributions before building the app.
 
 ### Security
 

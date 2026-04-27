@@ -7,10 +7,11 @@ three example files in this directory mirror what we run in production.
 
 ## Fast path: one-liner (recommended)
 
-`scripts/bootstrap.sh` clones the repo into `/opt/tm-agent` and hands
-off to `scripts/install.sh` — which does the whole dance (npm install,
-build, prune dev dependencies, random token+password,
-`/etc/tm-agent/env`, systemd unit, enable + start):
+`scripts/bootstrap.sh` installs `git` if needed, clones the repo into
+`/opt/tm-agent`, and hands off to `scripts/install.sh` — which does the whole
+dance (system packages for tmux/openssl/native npm builds, Node.js 20+
+bootstrap on common Linux distros, npm install, build, prune dev dependencies,
+random token+password, `/etc/tm-agent/env`, systemd unit, enable + start):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ChuangLee/TM-Agent/main/scripts/bootstrap.sh | sudo bash
@@ -24,10 +25,10 @@ curl -fsSL https://raw.githubusercontent.com/ChuangLee/TM-Agent/main/scripts/boo
   | sudo bash -s -- --workspace-root /root/repos
 ```
 
-Overridable via env: `TM_AGENT_REPO`, `TM_AGENT_REF`, `TM_AGENT_DIR`
-(default `/opt/tm-agent`). Rerunning upgrades in place — `git pull`
-to the requested ref, then re-exec the installer, which reuses the
-existing env file so bookmarked URLs survive.
+Overridable via env: `TM_AGENT_REPO`, `TM_AGENT_REF`, `TM_AGENT_DIR` (default
+`/opt/tm-agent`). Rerunning upgrades in place — `git pull` to the requested
+ref, then re-exec the installer, which reuses the existing env file so
+bookmarked URLs survive.
 
 Security-conscious operators: inspect before executing —
 
@@ -87,7 +88,9 @@ npm prune --omit=dev
 ```
 
 Build dependencies are needed on the target host unless you ship a prebuilt
-`dist/`; `npm prune --omit=dev` keeps the deploy tree smaller after build.
+`dist/`; `scripts/install.sh` can install tmux, openssl, native build tools,
+and Node.js 20+ automatically on Debian/Ubuntu, RHEL/CentOS/Fedora, and Alpine.
+`npm prune --omit=dev` keeps the deploy tree smaller after build.
 
 ### 2. Token + password env file
 

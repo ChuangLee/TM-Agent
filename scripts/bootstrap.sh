@@ -9,11 +9,9 @@
 #   curl -fsSL https://raw.githubusercontent.com/ChuangLee/TM-Agent/main/scripts/bootstrap.sh \
 #     | sudo bash -s -- --workspace-root /root/repos
 #
-# This script is intentionally thin: it only does what install.sh
-# *can't* do when running from stdin — namely, get the repo onto the
-# box. Once the clone is on disk it execs scripts/install.sh with the
-# forwarded args, so all the real logic (build, env, systemd,
-# idempotency) lives in exactly one place.
+# This script stays thin: it gets git if needed, gets the repo onto the
+# box, then execs scripts/install.sh with the forwarded args. install.sh
+# owns the real logic (Node bootstrap, build, env, systemd, idempotency).
 #
 # Overridable via env:
 #   TM_AGENT_REPO=<git url>        default: the canonical GitHub repo
@@ -37,8 +35,27 @@ info() { printf '%s→%s %s\n' "$C_BLU" "$C_RST" "$*"; }
 ok()   { printf '%s✓%s %s\n' "$C_GRN" "$C_RST" "$*"; }
 die()  { printf '%s✗%s %s\n' "$C_RED" "$C_RST" "$*" >&2; exit 1; }
 
+install_git() {
+  info "git not found; installing git"
+  if command -v apt-get >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y git ca-certificates
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y git ca-certificates
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y git ca-certificates
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --no-cache git ca-certificates
+  else
+    die "git not found and no supported package manager detected — install git first"
+  fi
+  command -v git >/dev/null 2>&1 || die "git install did not succeed"
+  ok "git installed"
+}
+
 [ "$(id -u)" -eq 0 ] || die "must run as root (try: curl … | sudo bash)"
-command -v git >/dev/null 2>&1 || die "git not found — install git first"
+command -v git >/dev/null 2>&1 || install_git
 
 printf '%s%sTM-Agent bootstrap%s\n' "$C_BOLD" "$C_BLU" "$C_RST"
 printf '%sRepo%s %s @ %s\n' "$C_DIM" "$C_RST" "$REPO" "$REF"
