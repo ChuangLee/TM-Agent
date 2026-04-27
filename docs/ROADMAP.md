@@ -1,5 +1,7 @@
 # Roadmap
 
+> This is a historical planning log, not the current release checklist. Some early checkbox sections were superseded by later ADR-driven work. For the public release status, see [`README.md`](../README.md).
+
 Phased, incremental delivery. Each phase is meant to be independently shippable—at the end of any phase, the app is usable, even if limited.
 
 ## Phase 0 — Bootstrap (target: 1–2 days)

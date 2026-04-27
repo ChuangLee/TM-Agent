@@ -8,7 +8,7 @@ TM-Agent is a **touch-first** tmux web client. It is not yet another SSH-in-the-
 
 Backend forked from [DagsHub/tmux-mobile](https://github.com/DagsHub/tmux-mobile); frontend rewritten from scratch.
 
-> Status: **Phase 2 complete** · live terminal · native kinetic scroll · long-press freeze-and-select. Roadmap in [`docs/ROADMAP.md`](./docs/ROADMAP.md).
+> Status: **Public preview / v0.1.0** · touch-first terminal · desktop multi-session tiling · Files panel · Direct Mode · i18n. Planning log in [`docs/ROADMAP.md`](./docs/ROADMAP.md).
 
 ---
 
@@ -85,7 +85,7 @@ The TopBar's ⊞ layout button cycles 1×1 / 1×2 / 2×2. Each cell holds an ind
 
 ### 🚀 Direct Mode — desktop keys, 100% to the PTY
 
-On desktop (≥820px + fine pointer) the TopBar exposes a Direct Mode switch. With it on, **every keyboard event** (Ctrl / Alt / Shift / combos) flows straight to the PTY, bypassing the Compose pipeline — vim, the tmux prefix, Ctrl-C all behave natively. The Compose Bar dims, the terminal gets a soft breathing glow, and a top-bar pulse confirms the mode. Exit with `Ctrl+]`, double-tap Esc, or the same toggle.
+On desktop (≥820px + fine pointer) TM-Agent exposes a Direct Mode switch. With it on, **every keyboard event** (Ctrl / Alt / Shift / combos) flows straight to the PTY, bypassing the Compose pipeline — vim, the tmux prefix, Ctrl-C all behave natively. The Compose Bar dims, the terminal gets a soft breathing glow, and a top-bar pulse confirms the mode. Exit with `Ctrl+]`, `Shift+Esc`, the indicator button, or the same toggle.
 
 > Direct Mode is **deliberately not on mobile** — soft keyboards have no physical modifiers, so the feature would be crippled by design. This is a conscious tradeoff, not a missing feature.
 
@@ -166,7 +166,7 @@ The one thing the script does not do is nginx + TLS — every reverse proxy setu
 - [`docs/PRD.md`](./docs/PRD.md) — user stories & success criteria
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — module boundaries, wire protocol, state shape
 - [`docs/DESIGN_PRINCIPLES.md`](./docs/DESIGN_PRINCIPLES.md) — the five rules that govern every UX decision
-- [`docs/ROADMAP.md`](./docs/ROADMAP.md) — phased delivery; current phase marker
+- [`docs/ROADMAP.md`](./docs/ROADMAP.md) — historical planning log and upcoming direction
 - [`docs/adr/`](./docs/adr/) — architectural decision records; non-trivial structural choices land here first
 
 ```
@@ -175,14 +175,20 @@ src/
 ├── frontend/          # Vite + React 19 + Tailwind + xterm.js
 │   ├── app/           # AppShell
 │   ├── features/
+│   │   ├── action-panel/
 │   │   ├── auth/      # password prompt
 │   │   ├── compose/   # ComposeBar
-│   │   ├── shell/     # TopBar
-│   │   └── terminal/  # Surface, ScrollMirror, FreezeLayer, use-terminal
-│   ├── hooks/         # control-session, visual-viewport inset
+│   │   ├── direct-mode/
+│   │   ├── files/     # sidebar file browser + preview
+│   │   ├── key-overlay/
+│   │   ├── sessions/
+│   │   ├── shell/     # TopBar + shell chrome
+│   │   ├── sysinfo/
+│   │   └── terminal/  # MultiSurface, SlotFrame, xterm wiring
+│   ├── hooks/         # control-session, terminal/session lifecycle
 │   ├── lib/ansi/      # xterm buffer cells → HTML
 │   ├── services/      # control-ws / terminal-ws clients, config api
-│   ├── stores/        # zustand (auth, sessions, terminal, freeze)
+│   ├── stores/        # zustand (auth, sessions, layout, terminal, files, sysinfo, ui)
 │   └── styles/        # tokens.css = single source of truth for cell metrics
 └── shared/            # wire protocol types
 ```
@@ -191,15 +197,15 @@ src/
 
 ## Status
 
-| Phase | Ships                                        | State    |
-| ----- | -------------------------------------------- | -------- |
-| 0     | Repo bootstrap, CI, backend port             | done     |
-| 1     | Live terminal + compose + auth               | done     |
-| 2     | Native scroll, DOM mirror, freeze-and-select | **done** |
-| 3     | Session drawer + window navigation           | next     |
-| 4     | Command sheet + smart keys                   |          |
-| 5     | Panes as cards (horizontal swipe carousel)   |          |
-| 6     | Polish pass                                  |          |
+| Area                         | State                          |
+| ---------------------------- | ------------------------------ |
+| Live terminal / auth / send  | shipped                        |
+| Mobile scroll / freeze / IME | shipped                        |
+| Sessions / Files / Sysinfo   | shipped                        |
+| Multi-session tiling         | shipped                        |
+| Direct Mode                  | shipped                        |
+| i18n / install / deploy docs | shipped                        |
+| Post-v0.1 focus              | polish, packaging, performance |
 
 ---
 
@@ -211,7 +217,7 @@ Workflow, commit convention, PR checklist — all in [`CONTRIBUTING.md`](./CONTR
 
 This project stands on the shoulders of giants — none of it exists without them.
 
-- **[DagsHub/tmux-mobile](https://github.com/DagsHub/tmux-mobile)** — direct upstream of the backend fork. Node + `ws` + `node-pty` + tmux CLI gateway, the password / token two-factor auth, the `FakeTmuxGateway` / `FakePtyFactory` test doubles — all inherited and preserved. TM-Agent rewrote the frontend wholesale and kept the backend largely intact. Thanks to the DagsHub team for building and open-sourcing this foundation.
+- **[DagsHub/tmux-mobile](https://github.com/DagsHub/tmux-mobile)** — direct upstream of the backend fork. Node + `ws` + `node-pty` + tmux CLI gateway, the password / token two-factor auth, the `FakeTmuxGateway` / `FakePtyFactory` test doubles — all inherited and continuously extended. TM-Agent rewrote the frontend wholesale and added backend capabilities for multi-slot routing, files, sysinfo, and install/deploy workflows. Thanks to the DagsHub team for building and open-sourcing this foundation.
 - **[tmux](https://github.com/tmux/tmux)** — the de facto backend. The session / window / pane model has been correct for decades, to the point that "running an agent as a long-lived process" needed no new concepts from us.
 - **[xterm.js](https://github.com/xtermjs/xterm.js)** — used as a headless ANSI parser + buffer engine (ADR-0005); the rendering layer is ours. Without xterm's mature VT parser, the live pane wouldn't be possible.
 - **[shadcn/ui](https://ui.shadcn.com/)** + **[Radix UI](https://www.radix-ui.com/)** — source of the a11y primitives (sidebar, dialog, popover, ...).

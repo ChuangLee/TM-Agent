@@ -8,19 +8,19 @@ TM-Agent 是一个**触屏优先**的 tmux Web 客户端。它不是又一个 SS
 
 后端 fork 自 [DagsHub/tmux-mobile](https://github.com/DagsHub/tmux-mobile),前端完全重写。
 
-> Status: **Phase 2 已完成** · 实时终端 · 原生惯性滚动 · 长按取词复制。下阶段计划见 [`docs/ROADMAP.md`](./docs/ROADMAP.md)。
+> Status: **Public preview / v0.1.0** · 手机触屏终端 · 桌面多 session 平铺 · 文件面板 · Direct Mode · i18n。规划日志见 [`docs/ROADMAP.md`](./docs/ROADMAP.md)。
 
 ---
 
 ## ✨ 核心亮点
 
-- 📎 **附件直投 Agent** —— Compose Bar 直接**粘贴 / 拖入**图片、PDF、代码,自动注入 prompt,**告别 `scp`**
+- 📎 **附件直投 Agent** —— 输入框直接**粘贴 / 拖入**图片、PDF、代码,上传后自动注入 prompt,告别 `scp`
+- 📜 **原生滚屏 tmux** —— 滚轮 / 拖选 / Cmd-C 直接复制
+- 🪟🪟 **多 Session 同屏平铺** —— 桌面 1×1 / 1×2 / 2×2 三档,四个 agent 并行精准观察指挥
+- 🗂️ **文件管理** —— 工作成果即时可看，浏览 / 预览 / 上传 / 下载 / 删除
 - ⚡ **智能 Slash 补全** —— 识别 Claude Code / Codex / Gemini / Aider,弹对应命令面板
-- 🪟🪟 **多 Session 同屏平铺** —— 桌面 1×1 / 1×2 / 2×2 三档,四个 agent 并行不打架
 - 🚀 **Direct Mode 直通模式** —— 桌面所有键盘事件原生穿透 PTY,vim / Ctrl-C / tmux prefix 全可用
-- 📜 **浏览器原生滚屏 tmux 历史** —— 滚轮 / 拖选 / Cmd-C 复制就是文本,不是另一个假滚动条
 - 📱 **真·原生触屏** —— 浏览器自带 kinetic 惯性滚动 + 长按冻结取词复制,不写一行 `touchmove`
-- 🗂️ **内置文件管理** —— 浏览 / 上传 / 下载 / 预览(图片 · PDF · 视频 · 音频 · Markdown · 代码)
 - 📈 **系统状态贴脚** —— CPU / 内存 / Load 双 sparkline 实时刷,谁吃爆机器一眼可见
 - 🔐 **生产可部署** —— 一行 `curl` 安装,systemd + nginx + TLS 模板齐全
 
@@ -85,7 +85,7 @@ TopBar 的 ⊞ 布局按钮切换 1×1 / 1×2 / 2×2 三档。每格独立连一
 
 ### 🚀 Direct Mode —— 桌面键盘 100% 直通 PTY
 
-桌面端(≥820px + 鼠标设备)TopBar 有 Direct Mode 开关。打开后,**所有键盘事件**(含 Ctrl / Alt / Shift / 组合键)直通 PTY,绕过 Compose 流程 —— vim、tmux prefix、Ctrl-C 全部 native。视觉上 Compose Bar 模糊、终端外发出呼吸光、顶部脉冲提示当前在 Direct Mode。退出:`Ctrl+]` / 双击 Esc / 再按一次按钮。
+桌面端(≥820px + 鼠标设备)提供 Direct Mode 开关。打开后,**所有键盘事件**(含 Ctrl / Alt / Shift / 组合键)直通 PTY,绕过 Compose 流程 —— vim、tmux prefix、Ctrl-C 全部 native。视觉上 Compose Bar 模糊、终端外发出呼吸光、顶部脉冲提示当前在 Direct Mode。退出:`Ctrl+]` / `Shift+Esc` / 顶部指示条按钮 / 再按一次开关。
 
 > 手机端**故意没做** Direct Mode —— 虚拟键盘没物理修饰键,做了也是残废。是有意识的取舍,不是漏做。
 
@@ -166,7 +166,7 @@ curl -fsSL https://raw.githubusercontent.com/ChuangLee/TM-Agent/main/scripts/boo
 - [`docs/PRD.md`](./docs/PRD.md) — user stories & success criteria
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — 模块边界、wire protocol、state shape
 - [`docs/DESIGN_PRINCIPLES.md`](./docs/DESIGN_PRINCIPLES.md) — 五条统辖 UX 决策的原则
-- [`docs/ROADMAP.md`](./docs/ROADMAP.md) — phased delivery,当前 phase marker
+- [`docs/ROADMAP.md`](./docs/ROADMAP.md) — 历史规划日志与后续方向
 - [`docs/adr/`](./docs/adr/) — architectural decision records;非 trivial 的结构变更先落这里
 
 ```
@@ -175,31 +175,37 @@ src/
 ├── frontend/          # Vite + React 19 + Tailwind + xterm.js
 │   ├── app/           # AppShell
 │   ├── features/
+│   │   ├── action-panel/
 │   │   ├── auth/      # password prompt
 │   │   ├── compose/   # ComposeBar
-│   │   ├── shell/     # TopBar
-│   │   └── terminal/  # Surface, ScrollMirror, FreezeLayer, use-terminal
-│   ├── hooks/         # control-session, visual-viewport inset
+│   │   ├── direct-mode/
+│   │   ├── files/     # sidebar file browser + preview
+│   │   ├── key-overlay/
+│   │   ├── sessions/
+│   │   ├── shell/     # TopBar + shell chrome
+│   │   ├── sysinfo/
+│   │   └── terminal/  # MultiSurface, SlotFrame, xterm wiring
+│   ├── hooks/         # control-session, terminal/session lifecycle
 │   ├── lib/ansi/      # xterm buffer cells → HTML
 │   ├── services/      # control-ws / terminal-ws clients, config api
-│   ├── stores/        # zustand(auth, sessions, terminal, freeze)
+│   ├── stores/        # zustand(auth, sessions, layout, terminal, files, sysinfo, ui)
 │   └── styles/        # tokens.css = single source of truth for cell metrics
 └── shared/            # wire protocol types
 ```
 
 ---
 
-## 进度
+## 当前状态
 
-| Phase | Ships                                        | State    |
-| ----- | -------------------------------------------- | -------- |
-| 0     | Repo bootstrap, CI, backend port             | done     |
-| 1     | Live terminal + compose + auth               | done     |
-| 2     | Native scroll, DOM mirror, freeze-and-select | **done** |
-| 3     | Session drawer + window navigation           | next     |
-| 4     | Command sheet + smart keys                   |          |
-| 5     | Panes as cards (horizontal swipe carousel)   |          |
-| 6     | Polish pass                                  |          |
+| Area                         | State                          |
+| ---------------------------- | ------------------------------ |
+| Live terminal / auth / send  | shipped                        |
+| Mobile scroll / freeze / IME | shipped                        |
+| Sessions / Files / Sysinfo   | shipped                        |
+| Multi-session tiling         | shipped                        |
+| Direct Mode                  | shipped                        |
+| i18n / install / deploy docs | shipped                        |
+| Post-v0.1 focus              | polish, packaging, performance |
 
 ---
 
@@ -211,7 +217,7 @@ src/
 
 本项目站在这些项目的肩膀上 —— 没有它们,TM-Agent 不会存在。
 
-- **[DagsHub/tmux-mobile](https://github.com/DagsHub/tmux-mobile)** —— 后端 fork 的直接上游。Node + `ws` + `node-pty` + tmux CLI 网关、password / token 双因子认证、`FakeTmuxGateway` / `FakePtyFactory` 测试替身,都是从这里继承并保留的。TM-Agent 把前端完全重写,后端几乎原样留用。感谢 DagsHub 团队把这层扎实的基础做出来并开源。
+- **[DagsHub/tmux-mobile](https://github.com/DagsHub/tmux-mobile)** —— 后端 fork 的直接上游。Node + `ws` + `node-pty` + tmux CLI 网关、password / token 双因子认证、`FakeTmuxGateway` / `FakePtyFactory` 测试替身,都是从这里继承并持续扩展的。TM-Agent 把前端完全重写,并在后端增加了多 slot、文件、sysinfo、安装部署等能力。感谢 DagsHub 团队把这层扎实的基础做出来并开源。
 - **[tmux](https://github.com/tmux/tmux)** —— 事实后端。session / window / pane 模型几十年如一日地正确,以至于"把 agent 当长跑进程跑"这件事根本不需要我们发明新概念。
 - **[xterm.js](https://github.com/xtermjs/xterm.js)** —— 当作 headless ANSI 解析 + buffer 维护引擎使用(ADR-0005),渲染层自己写。没有 xterm 成熟的 VT 解析,live pane 这条路根本走不通。
 - **[shadcn/ui](https://ui.shadcn.com/)** + **[Radix UI](https://www.radix-ui.com/)** —— sidebar、dialog、popover 等 a11y primitive 的来源。

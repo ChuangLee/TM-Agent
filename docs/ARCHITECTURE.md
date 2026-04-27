@@ -1,268 +1,161 @@
 # Technical Architecture
 
-> Audience: engineers (including future Claude sessions) about to write code in this repo. Skim the section headings before diving in.
+> Audience: engineers about to change this repo. This document describes the current public-preview architecture; historical sequencing lives in [`ROADMAP.md`](./ROADMAP.md) and `docs/adr/`.
 
-## 1. System overview
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Browser (phone / tablet / desktop)                                 │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │ React SPA (Vite build)                                        │  │
-│  │                                                               │  │
-│  │  ┌─────────┐  ┌──────────────┐  ┌─────────┐  ┌─────────────┐  │  │
-│  │  │AppShell │  │  Features    │  │  Hooks  │  │  Services   │  │  │
-│  │  │ TopBar  │  │  sessions    │  │ useWS   │  │ ControlWS   │  │  │
-│  │  │ Surface │──│  panes       │──│ useDrag │──│ TerminalWS  │  │  │
-│  │  │ Compose │  │  history     │  │ useAuth │  │ ConfigAPI   │  │  │
-│  │  │ Drawers │  │  commands    │  │         │  │             │  │  │
-│  │  └─────────┘  └──────────────┘  └─────────┘  └─────────────┘  │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                    ▲              ▲                                 │
-│                    │ /ws/control  │ /ws/terminal                    │
-│                    │ JSON msgs    │ raw PTY bytes + JSON ctrl       │
-└────────────────────┼──────────────┼─────────────────────────────────┘
-                     │              │
-┌────────────────────┼──────────────┼─────────────────────────────────┐
-│  Node backend (ported from tmux-mobile, mostly unchanged)           │
-│  ┌─────────────────┴──────────────┴──────────────────────────────┐  │
-│  │ Express + ws                                                  │  │
-│  │   - AuthService (token + optional password, constant-time)    │  │
-│  │   - ControlWebSocket  ← tmux state, mutations, auth           │  │
-│  │   - TerminalWebSocket ← PTY stdout/stdin bridge               │  │
-│  │   - TmuxStateMonitor  ← periodic snapshot broadcaster         │  │
-│  └────────────────────┬─────────────────────────────────────────┘   │
-│                       │                                             │
-│  ┌──────────────┐  ┌──┴─────────────┐  ┌─────────────────────────┐  │
-│  │ TmuxGateway  │  │ TerminalRuntime│  │ PtyFactory (node-pty)   │  │
-│  │  (tmux CLI   │  │  (per-client   │  │                         │  │
-│  │  executor)   │  │  attach runtime│  │                         │  │
-│  └──────┬───────┘  └──────┬─────────┘  └────────────┬────────────┘  │
-│         │                 │                         │               │
-└─────────┼─────────────────┼─────────────────────────┼───────────────┘
-          │ spawns / queries│ spawns tmux attach PTY  │
-          ▼                 ▼                         ▼
-       ┌──────────────────────────────────────────────────┐
-       │                tmux server                       │
-       │  sessions / windows / panes / grouped attachments│
-       └──────────────────────────────────────────────────┘
-```
-
-## 2. What we inherit from tmux-mobile
-
-The backend is ported almost verbatim. The pieces:
-
-| Module                     | Role                                        | Change needed                                                             |
-| -------------------------- | ------------------------------------------- | ------------------------------------------------------------------------- |
-| `src/backend/auth/`        | Token + password auth, constant-time verify | None                                                                      |
-| `src/backend/cloudflared/` | Optional quick-tunnel                       | Drop for v1 (we use nginx)                                                |
-| `src/backend/pty/`         | `node-pty` adapter, `TerminalRuntime`       | None                                                                      |
-| `src/backend/tmux/`        | `TmuxCliExecutor`, `FakeTmuxGateway`        | Small additions (session rename, multi-session snapshot)                  |
-| `src/backend/state/`       | `TmuxStateMonitor` polling broadcaster      | None                                                                      |
-| `src/backend/server.ts`    | Control + terminal WS endpoints             | Minor: new API routes (see §6)                                            |
-| `src/backend/cli.ts`       | CLI entry, env loading                      | Port; keep env-var token/password support added during tmux-mobile deploy |
-
-We do **not** inherit the React frontend. It is rewritten.
-
-## 3. Frontend architecture
-
-### 3.1 Shell
-
-`AppShell` owns global layout and mounts features. It does **not** own business state.
+## 1. System Overview
 
 ```
-AppShell
-├── TopBar                (buttons: sessions, freeze, title, keys, command, more)
-├── Surface               (virtual-scroll container; ADR-0004)
-│   └── .scroller         (native overflow-y:auto; kinetic scroll lives here)
-│       ├── .spacer       (height = scrollback line count × cellHeight)
-│       └── .viewport     (sticky top:0; one visible window)
-│           ├── LiveLayer       xterm.js canvas/webgl renderer
-│           ├── ScrollMirror    DOM shadow of visible window (ANSI→HTML, native select)
-│           └── FreezeLayer     on-demand DOM snapshot (ADR-0003)
-├── SmartKeysBar          (collapsible, toggled from TopBar)
-├── ComposeBar            (textarea + send)
-├── SessionDrawer         (mobile overlay / desktop sidebar)
-└── CommandSheet          (bottom sheet for tmux actions)
+Browser
+├── React 19 SPA (Vite)
+│   ├── App shell: responsive mobile drawer / desktop sidebar layout
+│   ├── Terminal surface: xterm.js buffer + custom React chrome
+│   ├── Compose bar: IME-safe prompt injection + attachment upload
+│   ├── Sessions / Files / Sysinfo / Direct Mode / Key Overlay
+│   └── Services: Control WS, Terminal WS, HTTP APIs
+│
+│      /ws/control        JSON protocol: auth, tmux state, slot control
+│      /ws/terminal       PTY byte stream + resize/read/write controls
+│      /api/*             config, files, shell history, workspace picker
+│
+Node backend
+├── Express + ws
+│   ├── AuthService: token + optional password, constant-time checks
+│   ├── ControlWebSocket: state, session mutations, slot attach routing
+│   ├── TerminalRuntime: one PTY attachment per client/slot
+│   ├── TmuxStateMonitor: snapshot + JSON Patch delta broadcasts
+│   ├── Files routes: pane-cwd-rooted file browser and upload/download
+│   ├── Fs picker routes: workspace-root sandbox for new session cwd
+│   └── Sysinfo sampler: Linux CPU / memory / load samples
+│
+tmux server
+└── Sessions / windows / panes / grouped client sessions
 ```
 
-Layout flips via media query at ≥ 820 px: `SessionDrawer` becomes a permanent grid sidebar; `AppShell` becomes a two-column grid.
+The backend started as a fork of `DagsHub/tmux-mobile` and still uses the same sound transport foundation: `ws`, `node-pty`, tmux CLI execution, and token/password auth. TM-Agent extends that foundation with slot-aware routing, file APIs, sysinfo, workspace-root install UX, subpath deployment support, and a fully rewritten frontend.
 
-### 3.2 State
+## 2. Backend Boundaries
 
-We use **Zustand** for global state, one store per domain:
+| Area             | Files                                            | Responsibility                                              |
+| ---------------- | ------------------------------------------------ | ----------------------------------------------------------- |
+| CLI/config       | `src/backend/cli.ts`, `config.ts`, `util/env.ts` | env parsing, token/password setup, port/base-path setup     |
+| HTTP/WS server   | `src/backend/server.ts`                          | Express app, WebSocket upgrade, SPA/static serving          |
+| Auth             | `src/backend/auth/`                              | token/password validation and HTTP auth middleware          |
+| tmux gateway     | `src/backend/tmux/`                              | CLI execution, snapshot parsing, tmux mutations             |
+| PTY runtime      | `src/backend/pty/`                               | `node-pty` adapter and per-client attach lifecycle          |
+| State monitor    | `src/backend/state/`                             | periodic tmux snapshots and delta publication               |
+| File browser     | `src/backend/files/`                             | pane-cwd-rooted list/meta/raw/download/delete/rename/upload |
+| Workspace picker | `src/backend/fs-picker/`                         | sandboxed directory browsing and mkdir                      |
+| Shell history    | `src/backend/shell-history/`                     | readonly recent shell history suggestions                   |
+| Sysinfo          | `src/backend/sysinfo/`                           | Linux `/proc` parsing and rolling samples                   |
 
-- `useAuthStore`: token, password, auth status.
-- `useSessionsStore`: session list snapshot, current session, current window, current pane, pane count.
-- `useTerminalStore`: live buffer stream (bytes received but not yet drained to xterm), pane size, dirty flag.
-- `useUIStore`: drawer/sheet/history/smart-keys open flags, theme, font size, toast queue.
+Backend code should keep tmux as the source of truth. Do not mirror long-lived session/window/pane state outside `TmuxStateMonitor` unless there is a concrete latency or UX reason, and document that reason in an ADR.
 
-Features import from their own store(s) only. Cross-store selectors live in `src/frontend/lib/state/` if needed.
-
-### 3.3 Gestures
-
-Every interactive drag uses `@use-gesture/react` with Pointer Events underneath. A shared `useDrag` hook normalizes:
-
-- Axis decision (`x`, `y`, or `undecided` until 8 px movement).
-- Threshold-based commit (with snap-back on release short of threshold).
-- `setPointerCapture` to avoid losing events on fast drags.
-
-Gesture ownership table (to prevent collisions):
-
-| Target                      | Horizontal                      | Vertical                    | Long-press                                    |
-| --------------------------- | ------------------------------- | --------------------------- | --------------------------------------------- |
-| `TopBar` title-wrap         | switch window                   | —                           | open sessions drawer                          |
-| `Surface` `.scroller`       | switch pane (dedicated handler) | **native scroll** (kinetic) | —                                             |
-| `ScrollMirror`              | —                               | inherits native scroll      | native text selection                         |
-| `FreezeLayer` (when active) | —                               | —                           | native text selection, fallback menu at 80 ms |
-| `SessionCard`               | left-swipe → kill hint          | native scroll (list)        | open context menu (post-MVP)                  |
-| `CommandSheet` grabber      | —                               | drag down → close           | —                                             |
-
-**Pane switching** on `.scroller`: implemented via a horizontal-axis gesture that activates only when the initial movement is > 12 px and more horizontal than vertical. Once vertical scroll starts, horizontal is locked out for that gesture—we do not steal scroll.
-
-### 3.4 Keyboard
-
-All keyboard shortcuts and their effects live in `src/frontend/lib/keybindings.ts`. The `useKeyboardShortcuts` hook subscribes once at the `AppShell` level. Defaults:
-
-| Chord                      | Action                                           |
-| -------------------------- | ------------------------------------------------ |
-| `Enter` (in compose)       | send                                             |
-| `Shift+Enter` (in compose) | newline                                          |
-| `Esc`                      | close topmost overlay (sheet → drawer → history) |
-| `Ctrl/⌘+K`                 | toggle command sheet                             |
-| `Ctrl/⌘+B`                 | toggle sessions drawer                           |
-| `Ctrl/⌘+↑`                 | toggle history                                   |
-| `Ctrl/⌘+/`                 | toggle smart-keys bar                            |
-| `Alt+←` / `Alt+→`          | previous / next window                           |
-
-Shortcuts are disabled while a text input/textarea outside the compose bar has focus.
-
-## 4. Wire protocol
-
-### 4.1 Inherited control messages
-
-Port verbatim from tmux-mobile, plus a few additions. Source of truth: `src/shared/protocol.ts` (Zod schemas).
-
-**Client → server**: `auth`, `select_session`, `new_session`, `new_window`, `select_window`, `kill_window`, `select_pane`, `split_pane`, `kill_pane`, `zoom_pane`, `capture_scrollback`, `send_compose`.
-
-**Server → client**: `auth_ok`, `auth_error`, `tmux_state`, `session_picker`, `attached`, `scrollback`, `info`, `error`.
-
-### 4.2 Additions for v1
-
-- `rename_session` / `rename_window` (client → server)
-- `sessions_snapshot` (server → client, pushed on request—contains last preview line per session for the picker)
-- `capture_scrollback` gains an `includeEscapes: boolean` parameter (default `true`). Backend passes `-e` when true.
-- `capture_scrollback` gains semantics for history seeding: called once at attach with `lines: 10000` (or configured `historyLimit`), response is piped into `term.write()` to populate xterm's scrollback (see ADR-0004).
-
-Any other additions require an ADR.
-
-### 4.3 Terminal socket
-
-Unchanged: authed binary + JSON messages for resize, write, read. Same topology as tmux-mobile.
-
-## 5. ANSI → DOM rendering pipeline (shared by History, Freeze, ScrollMirror)
-
-A key new piece. Lives in `src/frontend/lib/ansi/` and is consumed by every DOM-mirror layer.
+## 3. Frontend Boundaries
 
 ```
- ANSI-bearing string  (server sends capture_scrollback response)
-         │
-         ▼
- AnsiParser           (stateful; emits style-tagged text runs)
-         │
-         ▼
- HtmlRenderer         (maps runs → <span style="color:...">)
-         │
-         ▼
- HistoryLayer <pre>   (rendered with mono font stack matching xterm)
+src/frontend/
+├── app/                 # App composition, responsive layout, feature wiring
+├── components/          # small shared UI primitives
+├── features/
+│   ├── action-panel/    # state-aware action cards
+│   ├── auth/            # password/token UX
+│   ├── compose/         # prompt input, slash menu, attachments
+│   ├── direct-mode/     # raw keyboard-to-PTY mode
+│   ├── files/           # sidebar file browser and previews
+│   ├── key-overlay/     # mobile soft-key layer
+│   ├── sessions/        # session list, rail, drawers, new session wizard
+│   ├── shell/           # TopBar and shell chrome
+│   ├── shell-state/     # pane-state classifier for agent/TUI affordances
+│   ├── sysinfo/         # sidebar footer sparklines
+│   └── terminal/        # MultiSurface, SlotFrame, xterm lifecycle
+├── hooks/               # control session, slot shortcuts, viewport helpers
+├── i18n/                # locale resources and language detection
+├── services/            # WS clients and HTTP API clients
+├── stores/              # Zustand domain stores
+└── styles/              # design tokens and terminal layout CSS
 ```
 
-Requirements:
+State is split by domain with Zustand. The highest-risk stores are:
 
-- Handles SGR 0/1/2/3/4/5/7/9 and 30–37/40–47/90–97/100–107 plus 38;5/48;5 (256-color) and 38;2/48;2 (truecolor).
-- Strips or safely ignores unknown escapes (cursor moves, OSC); does not try to apply them—history is linear text by nature.
-- Uses the same Nerd Font CSS stack as xterm so glyph widths align.
-- Renders inside `white-space: pre` and `overflow: auto`—no word wrap, horizontal scroll for long lines.
-- Preserves text for native selection: `user-select: text`, no hidden spans inside selectable runs.
+| Store                      | Role                                                             |
+| -------------------------- | ---------------------------------------------------------------- |
+| `auth-store`               | token/password/auth phase                                        |
+| `sessions-store`           | tmux snapshot, attached base sessions, managed-session filtering |
+| `layout-store`             | desktop slot layout and focused slot                             |
+| `terminal-store`           | per-slot terminal lifecycle metadata                             |
+| `file-listings-store`      | pane-rooted directory cache                                      |
+| `shell-state-store`        | current pane classifier state                                    |
+| `sysinfo-store`            | rolling system stats samples                                     |
+| `ui-store` / `sheet-store` | drawers, sheets, toasts, and transient chrome state              |
 
-We do **not** build our own terminal emulator. We only translate style runs. Cursor position, line clearing, alt-screen switches are ignored because the source (`capture-pane` or xterm's buffer) already gives us rendered lines.
+Feature code should consume its own domain store directly. Cross-feature coupling should go through `app/` wiring or an explicit shared service, not ad-hoc imports between feature folders.
 
-### 5.1 Source-per-layer
+## 4. Wire Protocol
 
-| Layer          | Source                                                              | When it's built                                                         |
-| -------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| ScrollMirror   | xterm buffer (visible window only, row-diff updated)                | Always active behind LiveLayer (ADR-0004)                               |
-| FreezeLayer    | xterm in-memory buffer                                              | On long-press or freeze button (ADR-0003)                               |
-| _History seed_ | `capture-pane -e -p -S -N` **on attach**, piped into `term.write()` | Once per attach; afterwards the history lives inside xterm's scrollback |
+Source of truth is [`src/shared/protocol.ts`](../src/shared/protocol.ts).
 
-The ScrollMirror and FreezeLayer sources are zero-latency because xterm keeps the buffer in JS memory. History is **not a separate view**—it's whatever xterm's scrollback contains, reachable by scrolling up via native kinetic scroll. History seed at attach time makes past output immediately scrollable.
+Control WebSocket:
 
-The standalone HistoryLayer concept from earlier drafts is obsolete; see ADR-0004 for the rationale.
+- Client sends `auth` with token/password and optional capabilities.
+- Server returns `auth_ok` or `auth_error`.
+- Server publishes `tmux_state` snapshots; delta-capable clients also receive `tmux_state_delta`.
+- Client mutates tmux with messages such as `select_session`, `new_session`, `rename_session`, `kill_session`, `new_window`, `select_window`, `split_pane`, `select_pane`, `zoom_pane`, `send_compose`, `send_raw`, and `detach_slot`.
+- Desktop tiling uses `slot` ids. Missing slot means slot `0`, preserving single-pane compatibility.
+- `attached`, `scrollback`, `session_picker`, `system_stats`, `info`, and `error` are server events.
 
-## 6. Backend additions (small)
+Terminal WebSocket:
 
-### New HTTP routes
+- Carries authenticated PTY bytes for a specific `(clientId, slot)`.
+- JSON control frames handle resize/read/write.
+- Direct Mode writes raw bytes through the same PTY path; Compose Mode uses tmux buffer paste semantics.
 
-- `GET /api/sessions/snapshot` — for each session, returns the top-of-screen preview line. Used by the sessions drawer. Implementation: parallel `capture-pane -p -t session:0 | tail -n 1`.
-- `POST /api/sessions/:name/rename` — wraps `tmux rename-session`.
+HTTP APIs:
 
-### Small additions to `TmuxGateway`
+- `GET /api/config`: public client config needed before auth.
+- `/api/files/*`: authenticated pane-cwd-rooted file operations.
+- `/api/fs-picker/*`: authenticated workspace-root sandbox for new session cwd selection.
+- `/api/shell-history`: authenticated shell-history suggestions.
 
-- `renameSession(old, new)`
-- `sessionPreview(name)` returning `{ name, lastLine, paneCount, lastActivity }`
+All routes are mounted under `basePath` when deployed below a subpath such as `/tmux`.
 
-All new methods ship with `FakeTmuxGateway` implementations and unit tests.
+## 5. Security Model
 
-## 7. Security
+- Bind to `127.0.0.1` by default; put nginx/Caddy/another TLS proxy in front for production.
+- Require the URL token for all authenticated APIs and WebSockets; optionally require password as a second factor.
+- Keep persistent credentials in `/etc/tm-agent/env` with mode `600` when installed through `scripts/install.sh`.
+- Never expose arbitrary filesystem roots through Files. File operations are rooted at the active pane cwd and guarded against symlink escape/path traversal.
+- New-session cwd browsing is separately sandboxed by `--workspace-root`.
+- Static asset misses under `/assets/*` return `404`, not the SPA fallback, so module scripts never get HTML with the wrong MIME type.
 
-Retain tmux-mobile's model; see [`SECURITY.md`](../SECURITY.md) (copied from upstream, then re-examined).
-
-- Token is 32-hex. Compared constant-time.
-- Password is user-supplied or auto-generated 16-char. Compared constant-time.
-- Bind `127.0.0.1` by default. Nginx in front for TLS.
-- Env vars `TM_AGENT_TOKEN` / `TM_AGENT_PASSWORD` for systemd-persisted values.
-- No secrets in logs. CLI accepts `--password` for one-shot dev use only.
-- The clipboard copy path uses `navigator.clipboard.writeText` which requires a secure context; we never expose the app over plain HTTP in non-dev.
-
-## 8. Deployment
-
-Same topology as the current tmux-mobile install:
-
-- Node backend as a `systemd` service, bound to `127.0.0.1:8767`.
-- Nginx reverse proxy with TLS (Let's Encrypt via acme.sh), proxy_pass and WebSocket upgrade.
-- Frontend is a static build served by the same Node backend under `/assets` + SPA fallback.
-
-Production host template lives in `docs/deployment/nginx.conf.example` (added in Phase 0).
-
-## 9. Build & test topology
+## 6. Build, Test, And Deploy
 
 ```
-package.json (single)
+package.json
 ├── src/backend/   → tsc → dist/backend/
 ├── src/frontend/  → vite → dist/frontend/
-└── src/shared/    → imported by both, Zod schemas
+└── src/shared/    → imported by both
 ```
 
-- `npm run dev` uses `concurrently` to run `tsx watch` on backend and `vite` on frontend. Vite proxies `/ws/*` and `/api/*` to the backend in dev.
-- CI (GitHub Actions, Phase 0) runs: lint → typecheck → unit test → e2e (Playwright against `npm run build` output).
+Primary commands:
 
-## 10. Known constraints and accepted tradeoffs
+- `npm run dev`: backend `tsx watch` + Vite dev server with `/ws/*` and `/api/*` proxying.
+- `npm run build`: Vite frontend build, then backend TypeScript build.
+- `npm run typecheck`: backend and frontend `tsc --noEmit`.
+- `npm run lint`: ESLint over the repo.
+- `npm test`: Vitest unit/integration tests.
+- `npm run test:e2e`: production build plus Playwright.
 
-1. **Alt-screen apps (vim, htop, Claude Code TUI) have no tmux history.** The pull-down history view for those sessions will show only the current screen snapshot. We surface this state with a subtle label: "session is in alt-screen mode—history unavailable." Users who need full-session transcripts can rely on the terminal's own mechanisms (tmux `pipe-pane`, `script(1)`, etc.).
-2. **Scrollback capture size.** Default history request is 2 000 lines. We do not paginate further in MVP. Users who want more can hit "Load more" to re-request with +1 000.
-3. **Single active session per browser tab.** One browser tab attaches to one session at a time. Multiple tabs = multiple attachments (still sharing the same control socket for tmux state).
-4. **No structured AI-agent parsing.** Per design principle 4, agent output is treated like any PTY output. An `aider` session and a `bash` session are structurally identical to this codebase.
+Deployment entry points:
 
-## 11. Open questions (to be resolved by ADR)
+- `scripts/bootstrap.sh`: remote curl entrypoint; clones/updates `/opt/tm-agent`.
+- `scripts/install.sh`: idempotent local installer; builds, prunes dev deps, writes env, installs systemd unit.
+- `docs/deployment/nginx.conf.example`: root-domain reverse proxy.
+- `docs/deployment/nginx.conf.example.subpath`: subpath reverse proxy.
 
-- **Q1** — Font loading strategy. Do we ship a bundled Nerd Font WOFF2, or rely on the system's monospace? Open.
-- **Q2** — Session auto-create on empty attach. If no session exists, do we create a default `main` (tmux-mobile default), or prompt the user? Probably keep tmux-mobile behavior; ADR if changing.
-- **Q3** — Pane split interaction. When user taps "split pane" from the command sheet, does it add a new card and jump to it, or stay on the current and show a badge? Lean toward "jump to new card"; ADR before shipping.
-- **Q4** — Desktop sidebar collapse. Should it be collapsible by the user, or always-on? Currently always-on; revisit if annoying.
+## 7. Constraints And Tradeoffs
 
-## 12. Out of scope for v1 (in case someone tries)
-
-- Multi-server (connecting to multiple remote hosts from one frontend).
-- Embedded file editor.
-- Built-in recording/replay.
-- Shared session cursors across clients (tmux already handles this transparently; we just show it).
+- tmux remains the session authority. TM-Agent adds web control, not a replacement process supervisor.
+- Alt-screen applications still own their own history semantics. TM-Agent can seed and scroll tmux/xterm buffers, but it does not invent full transcripts for apps that do not emit one.
+- File APIs are intentionally local to the server where tmux runs. Multi-host orchestration is out of scope for the current public preview.
+- Mobile Direct Mode is intentionally absent because soft keyboards cannot reliably express physical modifier chords.
+- Agent output is treated as PTY output. Agent-specific affordances live around the terminal, not inside a structured parser for the agent stream.
