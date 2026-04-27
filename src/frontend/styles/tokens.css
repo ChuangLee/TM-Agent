@@ -1,0 +1,1067 @@
+/*
+ * Terminal surface tokens. Single-tree rendering (ADR-0005): the `.tm-rows`
+ * DOM is the only surface that paints terminal content; xterm.js is headless.
+ * Font metrics still pin here because react-owned rows, cursor, and the cell
+ * width measurement must all agree.
+ *
+ * Why px for line-height: unitless line-heights round differently across
+ * engines; the row height must be an integer px so scrollTop / cellH yields
+ * a stable topLine.
+ */
+
+:root {
+  --term-font-family:
+    "MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", "SF Mono", "JetBrains Mono", Menlo,
+    Monaco, "Courier New", monospace;
+  --term-font-size: 13px;
+  --term-line-height: 18px;
+  --term-letter-spacing: 0px;
+  --term-bg: #0a0f1b;
+  --term-fg: #d1e4ff;
+  --term-cursor: #7cc0ff;
+  /*
+   * ADR-0013 multi-slot accent palette. Position-bound:
+   *   slot 0 (TL) = cyan, slot 1 (TR) = amber,
+   *   slot 2 (BL) = violet, slot 3 (BR) = rose.
+   * Single-mode slot 0 keeps the cyan accent (matches existing --c-accent).
+   */
+  --slot-accent-0: #7dd3fc;
+  --slot-accent-1: #fbbf24;
+  --slot-accent-2: #a78bfa;
+  --slot-accent-3: #fb7185;
+}
+
+/* ───────────────────────────── Multi-slot frame (PR #3+) ─ */
+.slot-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /* height:100% is load-bearing: in single-mode the parent is a plain block
+     wrapper (h-full), and a flex container without explicit height collapses
+     to content size in a block parent. That made .tm-scroller's height:100%
+     resolve against a growing-from-content container — every xterm write
+     enlarged the content, ResizeObserver fired, applyResize re-dispatched
+     terminal_ready, and the backend processed dozens of resize messages per
+     load. Multi-mode (grid parent) survived because grid stretches items
+     by default; this rule normalizes both code paths. */
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line, #232832);
+  background: var(--term-bg);
+}
+.slot-frame[data-slot="0"] {
+  --slot-accent: var(--slot-accent-0);
+}
+.slot-frame[data-slot="1"] {
+  --slot-accent: var(--slot-accent-1);
+}
+.slot-frame[data-slot="2"] {
+  --slot-accent: var(--slot-accent-2);
+}
+.slot-frame[data-slot="3"] {
+  --slot-accent: var(--slot-accent-3);
+}
+.slot-frame[data-focused="true"] {
+  border-color: var(--slot-accent);
+  box-shadow: inset 0 0 0 1px var(--slot-accent);
+}
+.slot-mini-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  background: rgb(255 255 255 / 0.02);
+  border-bottom: 1px solid var(--line, #232832);
+  font-family: var(--term-font-family);
+  font-size: 11px;
+  color: var(--ink-dim, #8891a0);
+  flex-shrink: 0;
+}
+.slot-frame[data-focused="true"] .slot-mini-bar {
+  background: color-mix(in srgb, var(--slot-accent) 12%, transparent);
+  color: var(--ink, #e7ecf3);
+}
+.slot-mini-bar-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slot-mini-bar-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.slot-mini-bar-close:hover {
+  background: rgb(251 113 133 / 0.18);
+  color: #fda4af;
+}
+.slot-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 12px;
+  overflow-y: auto;
+}
+.slot-empty-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-mute, #5d6573);
+}
+.slot-empty-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.slot-empty-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line, #232832);
+  background: var(--bg-elev, #14171d);
+  color: var(--ink, #e7ecf3);
+  font-family: var(--term-font-family);
+  font-size: 13px;
+  cursor: pointer;
+}
+.slot-empty-list button:hover:not(:disabled) {
+  background: var(--bg-elev-hi, #1c2029);
+  border-color: var(--slot-accent, var(--accent, #7dd3fc));
+}
+.slot-empty-list button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.slot-empty-list-meta {
+  font-size: 11px;
+  color: var(--ink-mute, #5d6573);
+}
+
+/* Compose Bar focus stripe — colored bar on the left of the textarea showing
+   which slot the next message goes to. */
+.compose-focus-stripe {
+  width: 3px;
+  border-radius: 2px;
+  background: var(--slot-accent, var(--accent, #7dd3fc));
+  align-self: stretch;
+}
+.compose-focus-label {
+  font-size: 11px;
+  color: var(--ink-dim, #8891a0);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.compose-focus-label[data-flash="true"] {
+  color: var(--slot-accent, var(--accent, #7dd3fc));
+  font-weight: 600;
+  transition: color 200ms;
+}
+
+.term-rows {
+  font-family: var(--term-font-family);
+  font-size: var(--term-font-size);
+  line-height: var(--term-line-height);
+  letter-spacing: var(--term-letter-spacing);
+  font-variant-ligatures: none;
+  white-space: pre;
+  tab-size: 8;
+  -webkit-font-smoothing: antialiased;
+  color: var(--term-fg);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.term-rows .b {
+  font-weight: 700;
+}
+.term-rows .dim {
+  opacity: 0.65;
+}
+.term-rows .i {
+  font-style: italic;
+}
+.term-rows .u {
+  text-decoration: underline;
+}
+.term-rows .s {
+  text-decoration: line-through;
+}
+.term-rows .u.s {
+  text-decoration: underline line-through;
+}
+.term-rows .bl {
+  animation: term-blink 1s steps(2, start) infinite;
+}
+.term-rows .inv {
+  visibility: hidden;
+}
+.term-rows .w {
+  display: inline-block;
+  width: 2ch;
+  text-align: left;
+}
+
+@keyframes term-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+/*
+ * Virtual scroll container (ADR-0004). `.tm-scroller` owns the native scroll;
+ * `.tm-spacer` gives the scrollbar the right range; `.tm-viewport` is sticky
+ * so the rendered rows stay put while the spacer scrolls. ADR-0005 made the
+ * rows the single DOM source — no mirror, no canvas underneath.
+ */
+
+.tm-scroller {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* Reserve space for the vertical scrollbar unconditionally. Without this,
+     clientWidth changes by ~15px the moment content first overflows (or
+     stops overflowing), firing ResizeObserver → debounced term.resize →
+     tmux redraws the pane at a new col count. Users perceive that loop
+     as "bottom renders wrong for a couple seconds after attach/switch"
+     until it settles. `stable` keeps the gutter present at all times so
+     the scroll container's inner width is invariant across content
+     changes. Mobile touch scrollbars overlay anyway — no visual cost. */
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  background: var(--term-bg);
+  overscroll-behavior: contain;
+}
+
+.tm-spacer {
+  width: 1px;
+  min-height: 1px;
+  pointer-events: none;
+}
+
+.tm-viewport {
+  position: sticky;
+  top: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.tm-rows {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.tm-rows .tm-row {
+  line-height: var(--term-line-height);
+  height: var(--term-line-height);
+  min-height: var(--term-line-height);
+  white-space: pre;
+}
+
+.tm-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: var(--term-cursor);
+  opacity: 0.7;
+  pointer-events: none;
+  animation: term-cursor-blink 1.1s steps(2, start) infinite;
+  will-change: transform;
+}
+
+@keyframes term-cursor-blink {
+  to {
+    opacity: 0;
+  }
+}
+
+.tm-alt-banner {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  padding: 2px 8px;
+  font-family: var(--term-font-family);
+  font-size: 11px;
+  color: #93a4bb;
+  background: rgb(10 15 27 / 0.85);
+  pointer-events: none;
+}
+
+/* ───────────────────────────── PromptCaptureBanner (PR3) ─ */
+.tm-prompt-banner {
+  padding: 10px 16px;
+  background: var(--bg-elev, #14171d);
+  border-top: 1px solid var(--line, #232832);
+  border-bottom: 1px solid var(--line, #232832);
+  display: grid;
+  gap: 8px;
+}
+.tm-prompt-title {
+  font-size: 13px;
+  color: var(--ink-dim, #8891a0);
+  font-weight: 500;
+}
+.tm-prompt-hint {
+  color: var(--ink-dim, #8891a0);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.tm-prompt-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.tm-prompt-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #e7ecf3);
+  background: transparent;
+  border: 1px solid var(--line, #232832);
+  cursor: pointer;
+  transition: background 80ms;
+}
+.tm-prompt-btn:hover {
+  background: var(--bg-elev-hi, #1c2029);
+}
+.tm-prompt-btn-primary {
+  background: var(--accent, #7dd3fc);
+  color: #05243a;
+  border-color: var(--accent, #7dd3fc);
+}
+.tm-prompt-btn-primary:hover {
+  background: #93d8fc;
+}
+.tm-prompt-btn-ghost {
+  min-height: 36px;
+  padding: 0 10px;
+  font-weight: 400;
+  font-size: 12px;
+}
+.tm-prompt-input {
+  flex: 1 1 200px;
+  min-width: 160px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line, #232832);
+  background: var(--term-bg, #0c0e12);
+  color: var(--ink, #e7ecf3);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 14px;
+}
+.tm-prompt-input:focus {
+  outline: 2px solid var(--accent, #7dd3fc);
+  outline-offset: 1px;
+}
+@media (min-width: 820px) {
+  .tm-prompt-banner {
+    padding: 8px 12px;
+    grid-auto-flow: column;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+}
+
+/* ───────────────────────────── KeyOverlay (PR4) ─ */
+.tm-key-overlay {
+  position: fixed;
+  /* Sits BELOW the 48px TopBar so the ⌨ toggle stays visible + clickable. */
+  top: 3rem;
+  left: 0;
+  right: 0;
+  bottom: 32vh;
+  /* No backdrop-filter anywhere in this overlay — shell stays pixel-sharp.
+     Glass illusion is pure light & shadow: a diagonal sheen suggests a
+     tilted pane catching light, top/bottom inset lines form specular +
+     shadow rims. */
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0) 32%,
+    rgba(0, 0, 0, 0.02) 68%,
+    rgba(0, 0, 0, 0.07) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+  z-index: 1000;
+  padding: 8px 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  animation: tm-overlay-in 180ms ease-out;
+}
+@keyframes tm-overlay-in {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.tm-key-overlay-handle {
+  align-self: center;
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+.tm-key-overlay-zone-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim, #8891a0);
+  margin: 2px 0;
+}
+.tm-key-overlay-row,
+.tm-key-overlay-modifiers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tm-key-overlay-arrows {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 44px 44px;
+  gap: 4px;
+  justify-items: stretch;
+  max-width: 240px;
+  margin: 0 auto;
+}
+.tm-overlay-arrow-up {
+  grid-column: 2;
+  grid-row: 1;
+}
+.tm-overlay-arrow-left {
+  grid-column: 1;
+  grid-row: 2;
+}
+.tm-overlay-arrow-down {
+  grid-column: 2;
+  grid-row: 2;
+}
+.tm-overlay-arrow-right {
+  grid-column: 3;
+  grid-row: 2;
+}
+.tm-overlay-key {
+  position: relative;
+  overflow: hidden;
+  min-height: 40px;
+  min-width: 44px;
+  padding: 0 10px;
+  border-radius: 12px;
+  /* Clear-glass pebble — no blur. Two stacked gradients do all the work:
+       1. Diagonal specular streak (120deg) — the classic glass-button
+          sheen that catches "light" at the top-left.
+       2. Vertical body — faint bright top, near-clear middle, faint
+          dark bottom, giving the convex-cap + underside shade.
+     Rim highlight + outer shadow finish the silhouette. */
+  background:
+    linear-gradient(
+      120deg,
+      rgba(255, 255, 255, 0.28) 0%,
+      rgba(255, 255, 255, 0.06) 28%,
+      rgba(255, 255, 255, 0) 60%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.1) 0%,
+      rgba(255, 255, 255, 0.02) 50%,
+      rgba(0, 0, 0, 0.08) 100%
+    );
+  color: var(--ink, #e7ecf3);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+    0 4px 12px rgba(0, 0, 0, 0.22),
+    0 1px 2px rgba(0, 0, 0, 0.2);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 14px;
+  /* text-shadow is load-bearing: the cap is see-through, so glyphs must
+     stay legible even when the shell beneath is bright. */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+  transition:
+    transform 80ms ease,
+    background 80ms,
+    box-shadow 80ms;
+}
+/* Curved top highlight that sells the convex-cap illusion. */
+.tm-overlay-key::before {
+  content: "";
+  position: absolute;
+  inset: 1px 1px auto 1px;
+  height: 45%;
+  border-radius: 11px 11px 22px 22px / 11px 11px 60% 60%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 100%);
+  pointer-events: none;
+}
+.tm-overlay-key:active {
+  transform: scale(0.94);
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 50%),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.04) 0%,
+      rgba(255, 255, 255, 0) 50%,
+      rgba(0, 0, 0, 0.12) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    inset 0 2px 6px rgba(0, 0, 0, 0.32),
+    0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.tm-overlay-key-big {
+  min-height: 52px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.tm-overlay-mod[data-mod-state="armed"] {
+  border-color: rgba(251, 191, 36, 0.78);
+  border-width: 2px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+    0 0 12px rgba(251, 191, 36, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.22);
+}
+.tm-overlay-mod[data-mod-state="locked"] {
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.42) 0%, rgba(251, 191, 36, 0.14) 100%);
+  color: var(--accent-on, #052740);
+  border-color: rgba(251, 191, 36, 0.62);
+  font-weight: 700;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 0 14px rgba(251, 191, 36, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.22);
+}
+.tm-key-overlay-letters {
+  display: none; /* only visible when a modifier is active */
+}
+.tm-key-overlay-letters:has(.tm-overlay-key) {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+.tm-key-overlay:has(.tm-overlay-mod[data-mod-state="armed"]) .tm-key-overlay-letters,
+.tm-key-overlay:has(.tm-overlay-mod[data-mod-state="locked"]) .tm-key-overlay-letters {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+.tm-key-overlay-letters .tm-overlay-key-letter {
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0;
+  font-size: 13px;
+}
+.tm-key-overlay-fn {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  grid-template-rows: 36px 36px;
+  gap: 4px;
+}
+.tm-key-overlay-fn .tm-overlay-key {
+  min-height: 36px;
+  font-size: 12px;
+  padding: 0 6px;
+}
+.tm-key-overlay-footer {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  align-items: center;
+}
+.tm-overlay-compose-link {
+  margin-left: auto;
+  background: linear-gradient(180deg, rgba(125, 211, 252, 0.38) 0%, rgba(125, 211, 252, 0.14) 100%);
+  color: var(--accent-on, #052740);
+  border-color: rgba(125, 211, 252, 0.62);
+  font-weight: 600;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.25);
+}
+@media (min-width: 820px) {
+  /* KeyOverlay is mobile-only — the desktop ActionPanel + physical keyboard
+     cover the same needs. */
+  .tm-key-overlay {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tm-key-overlay {
+    animation: none;
+  }
+}
+
+/* ───────────────────────────── Direct Mode (PR6 + ADR-0013 §9) ─ */
+/* Direct Mode breathing glow scopes to the FOCUSED slot only — in multi-pane
+   layouts the user's keystrokes go to the focused slot's PTY, so the glow
+   tells them which pane is receiving. Single mode's slot 0 is always
+   focused, so the visual is unchanged from before PR #4. */
+body[data-direct-mode="active"] .slot-frame[data-focused="true"] .tm-scroller,
+body[data-direct-mode="entering"] .slot-frame[data-focused="true"] .tm-scroller {
+  box-shadow:
+    0 0 0 2px var(--slot-accent, var(--accent, #7dd3fc)),
+    0 0 32px color-mix(in srgb, var(--slot-accent, var(--accent, #7dd3fc)) 40%, transparent);
+  animation: tm-direct-mode-pulse 3s ease-in-out infinite;
+}
+/* Blur chrome tagged with [data-dm-blur]. Applying `filter` to any ancestor
+   of `.tm-scroller` would render the terminal subtree blurred even if the
+   scroller itself has filter:none — CSS filter creates a stacking context
+   that composites the whole subtree. So we tag specific siblings of the
+   main-area (TopBar, Sidebar, ActionPanel/Banner, ComposeBar) and only
+   target those. The main-area wrapper and its descendants stay untouched. */
+body[data-direct-mode="active"] [data-dm-blur],
+body[data-direct-mode="entering"] [data-dm-blur] {
+  filter: blur(4px) grayscale(30%) opacity(0.4);
+  transition: filter 200ms ease-out;
+  pointer-events: none;
+}
+[data-dm-blur] {
+  transition: filter 200ms ease-out;
+}
+@keyframes tm-direct-mode-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px var(--slot-accent, var(--accent, #7dd3fc)),
+      0 0 24px color-mix(in srgb, var(--slot-accent, var(--accent, #7dd3fc)) 30%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px var(--slot-accent, var(--accent, #7dd3fc)),
+      0 0 44px color-mix(in srgb, var(--slot-accent, var(--accent, #7dd3fc)) 60%, transparent);
+  }
+}
+
+/* Direct Mode indicator: narrow left rail + top glow line. The previous top
+   horizontal banner covered the first row of shell output; moving the status
+   treatment to the left edge keeps the whole Surface visible and leaves the
+   top as a subtle glow that signals "keys go to shell" without eating
+   vertical real estate. */
+.tm-direct-mode-topglow {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 2000;
+  background: var(--accent, #7dd3fc);
+  box-shadow:
+    0 0 16px 2px color-mix(in srgb, var(--accent, #7dd3fc) 70%, transparent),
+    0 2px 24px 4px color-mix(in srgb, var(--accent, #7dd3fc) 40%, transparent);
+  pointer-events: none;
+  animation: tm-direct-mode-topglow-breath 2.4s ease-in-out infinite;
+}
+.tm-direct-mode-topglow[data-status="entering"],
+.tm-direct-mode-topglow[data-status="exiting"] {
+  opacity: 0.55;
+  transition: opacity 200ms ease;
+}
+@keyframes tm-direct-mode-topglow-breath {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Left-docked panel: pulse + title + warning caption + kbd hint row.
+   The caption ("所有按键直送 shell") is load-bearing — Direct Mode
+   forwards every keystroke to the PTY including destructive combos, and
+   users need an always-visible reminder. Exit mnemonics (Ctrl+] /
+   Shift+Esc) render as visible kbd chips, not tooltips — discoverability
+   matters more than real estate here. */
+.tm-direct-mode-indicator {
+  position: fixed;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  width: 220px;
+  background: var(--accent, #7dd3fc);
+  color: #05243a;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 1px rgba(5, 36, 58, 0.15),
+    0 6px 24px rgba(125, 211, 252, 0.38);
+  user-select: none;
+}
+.tm-direct-mode-indicator[data-status="entering"],
+.tm-direct-mode-indicator[data-status="exiting"] {
+  opacity: 0.6;
+  transition: opacity 200ms ease;
+}
+.tm-direct-mode-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tm-direct-mode-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7);
+  animation: tm-direct-mode-indicator-pulse 1.2s ease-out infinite;
+  flex-shrink: 0;
+}
+@keyframes tm-direct-mode-indicator-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(255, 255, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+  }
+}
+.tm-direct-mode-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  flex: 1;
+}
+.tm-direct-mode-caption {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: rgba(5, 36, 58, 0.75);
+}
+.tm-direct-mode-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(5, 36, 58, 0.85);
+  margin-top: 2px;
+}
+.tm-direct-mode-kbd {
+  font-family: var(--tm-font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(5, 36, 58, 0.25);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: #05243a;
+  line-height: 1;
+}
+.tm-direct-mode-hint-or {
+  margin: 0 2px;
+  color: rgba(5, 36, 58, 0.65);
+}
+.tm-direct-mode-hint-trail {
+  margin-left: 4px;
+}
+.tm-direct-mode-exit-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  color: #05243a;
+  border: 1px solid rgba(5, 36, 58, 0.5);
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tm-direct-mode-exit-btn:hover {
+  background: rgba(5, 36, 58, 0.15);
+  border-color: #05243a;
+}
+
+/* IME sink + floater anchored bottom-center. The OS/browser IME candidate
+   window is positioned near the caret of the focused <textarea>, so placing
+   the sink off-screen (the earlier top:-1000px approach) forced the
+   candidate popup to the top-left corner of the viewport regardless of
+   where the user's eye actually is. Anchoring the sink bottom-center keeps
+   the candidate window under the compose area where users naturally look
+   when typing. Sink stays invisible via opacity:0 and caret-color:transparent
+   but remains on-screen so the IME client positions correctly. */
+.tm-direct-mode-ime-sink {
+  position: fixed;
+  bottom: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  caret-color: transparent;
+  pointer-events: none;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  margin: 0;
+  resize: none;
+  overflow: hidden;
+  z-index: 2100;
+}
+.tm-direct-mode-ime-floater {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-elev-hi, #1c2029);
+  border: 1px solid var(--accent, #7dd3fc);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 14px;
+  color: var(--accent, #7dd3fc);
+  z-index: 2100;
+  pointer-events: none;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  max-width: 80vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-direct-mode="active"] .tm-scroller {
+    animation: none;
+  }
+  body[data-direct-mode="active"] * {
+    transition: none !important;
+  }
+  .tm-direct-mode-pulse {
+    animation: none;
+  }
+  .tm-direct-mode-topglow {
+    animation: none;
+  }
+}
+
+/* ───────────────────────────── Compose Bar Suggestions (Phase 2.6) ─ */
+.tm-compose-wrap {
+  position: relative;
+}
+
+.tm-suggestions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  margin: 0 0 6px 0;
+  padding: 0;
+  list-style: none;
+  z-index: 999;
+  background: var(--bg-elev, #14171d);
+  border: 1px solid var(--line, #232832);
+  border-radius: 8px;
+  box-shadow: 0 -4px 12px rgb(0 0 0 / 0.35);
+  max-height: calc(6 * 44px);
+  overflow-y: auto;
+  animation: tm-suggest-in 80ms ease-out;
+}
+.tm-suggestions li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 12px;
+  font-family: var(--term-font-family);
+  font-size: 13px;
+  color: var(--ink, #e7ecf3);
+  cursor: pointer;
+}
+.tm-suggestions li[data-active="true"],
+.tm-suggestions li:hover {
+  background: var(--bg-elev-hi, #1c2029);
+}
+.tm-suggest-label {
+  flex: 1;
+  color: var(--ink, #e7ecf3);
+}
+.tm-suggest-hint {
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 11px;
+  color: var(--ink-dim, #8891a0);
+}
+.tm-suggest-enter {
+  font-size: 11px;
+  color: var(--ink-dim, #8891a0);
+}
+@keyframes tm-suggest-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tm-suggestions {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Session-switch / reconnect visual feedback.
+ *
+ * Philosophy (competitor steal — iTerm2 Instant Replay + VS Code Codespaces):
+ *   - Never blank the pane during a switch. The old frame stays on screen
+ *     (Surface is keyed by authEpoch, not session) — we just dim it 4%.
+ *   - No shimmer below 150 ms (handled in SlotFrame.tsx with a delay timer)
+ *     so instant switches stay chrome-free.
+ *   - After 150 ms, surface a 2px YouTube-style indeterminate progress strip
+ *     at the very top of the slot. Signals "in flight" without stealing
+ *     attention from the still-readable old frame.
+ *   - During WS reconnect, same strip but in the "connecting" amber so users
+ *     can tell the two apart at a glance.
+ * ------------------------------------------------------------------------- */
+
+.slot-frame [data-switching="true"] .tm-scroller {
+  /* Keep the frame readable — just enough desaturation to communicate
+   * "this view is stale". 140ms matches suggestion popover timing. */
+  filter: brightness(0.92);
+  transition: filter 140ms ease-out;
+}
+.slot-frame [data-switching="false"] .tm-scroller {
+  filter: none;
+  transition: filter 220ms ease-in;
+}
+
+.slot-frame-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+  background: color-mix(in srgb, var(--slot-accent, #7cc0ff) 18%, transparent);
+}
+.slot-frame-progress::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -40%;
+  width: 40%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--slot-accent, #7cc0ff) 50%,
+    transparent 100%
+  );
+  animation: tm-slot-progress 1100ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+[data-reconnecting="true"] .slot-frame-progress {
+  background: color-mix(in srgb, #f59e0b 22%, transparent);
+}
+[data-reconnecting="true"] .slot-frame-progress::before {
+  background: linear-gradient(90deg, transparent 0%, #f59e0b 50%, transparent 100%);
+}
+@keyframes tm-slot-progress {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .slot-frame [data-switching="true"] .tm-scroller {
+    filter: none;
+  }
+  .slot-frame-progress::before {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Sidebar session row: pending-tap spinner.
+ *
+ * When the user taps a non-attached session, SessionList optimistically marks
+ * that row as "pending" until the backend emits `attached` (or a 4s safety
+ * clears it). A small breathing dot sits before the session name so the tap
+ * is confirmed visually even before the 1–2s handshake completes — addresses
+ * the "did my click register?" question users asked with the prior UI.
+ * ------------------------------------------------------------------------- */
+
+.tm-session-pending-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--accent, #7cc0ff);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, #7cc0ff) 55%, transparent);
+  animation: tm-session-pending-pulse 1100ms ease-in-out infinite;
+}
+@keyframes tm-session-pending-pulse {
+  0%,
+  100% {
+    transform: scale(0.85);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, #7cc0ff) 55%, transparent);
+  }
+  50% {
+    transform: scale(1);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent, #7cc0ff) 0%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tm-session-pending-dot {
+    animation: none;
+  }
+}

@@ -1,0 +1,56 @@
+# /etc/nginx/conf.d/tm-agent.conf - reverse proxy that mounts
+# TM-Agent under a URL path (https://host.example/tmux/) instead of a
+# dedicated subdomain. See ADR-0018 for why this is supported and what
+# it means for the frontend's URL resolution.
+#
+# Requires this map in the http context (place in its own file, e.g.
+# /etc/nginx/conf.d/00-websocket-upgrade.conf):
+#
+#   map $http_upgrade $connection_upgrade {
+#       default upgrade;
+#       ''      close;
+#   }
+#
+# Pair with: `--base-path /tmux` on the backend (or TM_AGENT_BASE_PATH=/tmux
+# in /etc/tm-agent/env). The prefix you set here MUST match what the
+# backend was started with; the frontend is baked to resolve REST/WS
+# relative to whatever `<base href>` the backend injects.
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name host.example;
+
+    ssl_certificate     /root/.acme.sh/host.example_ecc/fullchain.cer;
+    ssl_certificate_key /root/.acme.sh/host.example_ecc/host.example.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_timeout 1d;
+    ssl_session_cache   shared:MozSSL:10m;
+
+    client_max_body_size 20m;
+
+    # ... other apps on this host continue to serve from `location /` ...
+
+    # TM-Agent under /tmux/. Note the trailing slash on BOTH sides —
+    # it tells nginx to strip the `/tmux` prefix before forwarding, so
+    # the backend (which you started with --base-path /tmux) sees paths
+    # like `/tmux/api/config` arrive as `/api/config`. That is wrong
+    # here: the backend expects the prefix to be present, because it
+    # mounts its own routes at `/tmux/*`. So DO NOT strip — use
+    # `proxy_pass http://127.0.0.1:8767;` with no trailing slash.
+    location /tmux/ {
+        proxy_pass http://127.0.0.1:8767;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        proxy_buffering     off;
+        proxy_read_timeout  86400s;
+        proxy_send_timeout  86400s;
+    }
+}

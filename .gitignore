@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+.vite/
+.cache/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+test-results/
+playwright-report/
+debug/
+scripts/debug-*.mjs
+.claude/
+.idea/
+.vscode/

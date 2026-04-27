@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<meta name="theme-color" content="#0d1117" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>TM-Agent · prototype</title>
+<style>
+  :root {
+    --bg: #0a0f1b;
+    --bg-elev: #111827;
+    --bg-raised: #1a2235;
+    --line: #1f2937;
+    --line-strong: #334155;
+    --ink: #d1e4ff;
+    --ink-dim: #93a4bb;
+    --ink-mute: #64748b;
+    --accent: #7cc0ff;
+    --accent-2: #a78bfa;
+    --ok: #60d394;
+    --warn: #fbbf24;
+    --err: #f87171;
+    --mono: 'Menlo', 'SF Mono', 'Fira Code', 'MesloLGS NF', Consolas, monospace;
+    --sans: -apple-system, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bot: env(safe-area-inset-bottom, 0px);
+    --topbar-h: 48px;
+    --compose-h: auto;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100dvh; overflow: hidden; }
+  body {
+    background: radial-gradient(circle at 80% -10%, #1a2340, #0a0f1b 55%);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.35;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { background: none; border: 0; padding: 0; cursor: pointer; }
+
+  #app {
+    display: grid;
+    grid-template-rows: auto 1fr auto auto;
+    grid-template-columns: 1fr;
+    height: 100dvh;
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bot);
+    max-width: 100%;
+  }
+  /* ─────────────── TopBar ─────────────── */
+  .topbar {
+    display: grid;
+    grid-template-columns: 40px 40px 1fr 40px 40px 40px;
+    align-items: center;
+    height: var(--topbar-h);
+    padding: 0 4px;
+    background: rgba(10,15,27,0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+    position: relative;
+    gap: 0;
+  }
+  .topbar .icon-btn {
+    width: 40px; height: 40px;
+    display: grid; place-items: center;
+    color: var(--ink-dim);
+    border-radius: 10px;
+    font-size: 18px;
+  }
+  .topbar .icon-btn:hover { color: var(--ink); background: var(--bg-raised); }
+  .topbar .icon-btn:active { background: var(--line-strong); }
+  .topbar .icon-btn.on { color: var(--accent); background: var(--bg-raised); }
+  .topbar .title-wrap {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    line-height: 1.1;
+    touch-action: pan-x;
+    cursor: grab;
+    min-width: 0;
+    padding: 0 4px;
+  }
+  .topbar .title-wrap:active { cursor: grabbing; }
+  .topbar .session-name {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--ink);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .topbar .window-strip {
+    margin-top: 3px;
+    display: flex; gap: 4px;
+  }
+  .topbar .window-dot {
+    width: 14px; height: 3px;
+    border-radius: 2px;
+    background: var(--line-strong);
+    transition: background 0.2s, width 0.2s;
+  }
+  .topbar .window-dot.active { background: var(--accent); width: 18px; }
+
+  /* ─────────────── Terminal surface ─────────────── */
+  .surface {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+    touch-action: none;
+  }
+  .layer {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+  .layer.history {
+    z-index: 1;
+    transform: translateY(-100%);
+    background: #0c1220;
+    display: flex; flex-direction: column;
+  }
+  .layer.live {
+    z-index: 2;
+    will-change: transform;
+    background: var(--bg);
+    transition: transform 0.25s cubic-bezier(.32,.72,0,1);
+    box-shadow: 0 -8px 24px rgba(0,0,0,0.3);
+  }
+  .layer.live.dragging { transition: none; }
+  body.history-open .layer.live { transform: translateY(100%); }
+  body.history-open .layer.history { transform: none; }
+  body.history-open .layer.history { transition: transform 0.25s cubic-bezier(.32,.72,0,1); }
+
+  /* Live (fake xterm) */
+  .term-view {
+    padding: 10px 12px 18px;
+    font-family: var(--mono);
+    font-size: clamp(12px, 3.3vw, 14px);
+    line-height: 1.45;
+    color: var(--ink);
+    height: 100%;
+    overflow: hidden;
+    white-space: pre;
+    display: flex; flex-direction: column; gap: 0;
+  }
+  .term-view .line { white-space: pre; }
+  .term-view .prompt { color: var(--accent); }
+  .term-view .user { color: var(--ink); }
+  .term-view .claude { color: var(--accent-2); }
+  .term-view .ok { color: var(--ok); }
+  .term-view .warn { color: var(--warn); }
+  .term-view .dim { color: var(--ink-dim); }
+  .term-view .tool { color: #f5a97f; }
+  .term-view .path { color: #89dceb; }
+  .term-view .cursor {
+    display: inline-block; width: 0.55em; height: 1em;
+    background: var(--accent); vertical-align: text-top;
+    animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .pull-hint {
+    position: absolute;
+    top: 6px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: var(--ink-mute);
+    padding: 4px 10px;
+    background: rgba(17,24,39,0.7);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    backdrop-filter: blur(6px);
+    opacity: 0;
+    transition: opacity 0.25s;
+    pointer-events: none;
+    z-index: 3;
+  }
+  .pull-hint.visible { opacity: 1; }
+
+  /* Pane dots */
+  .pane-dots {
+    position: absolute; left: 0; right: 0; bottom: 6px;
+    display: flex; justify-content: center; gap: 6px;
+    z-index: 3; pointer-events: none;
+  }
+  .pane-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--line-strong);
+    transition: all 0.2s;
+  }
+  .pane-dot.active { background: var(--accent); width: 20px; border-radius: 4px; }
+
+  /* History layer */
+  .history-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(10,15,27,0.85);
+    backdrop-filter: blur(10px);
+  }
+  .history-head button {
+    color: var(--accent);
+    font-size: 14px;
+    padding: 6px 10px;
+    border-radius: 8px;
+  }
+  .history-head button:hover { background: var(--bg-raised); }
+  .history-head button:active { background: var(--line-strong); }
+  .history-title { font-size: 13px; color: var(--ink-dim); flex: 1; }
+  .history-scroll {
+    flex: 1; overflow: auto; overscroll-behavior: contain;
+    padding: 12px 14px 32px;
+    font-family: var(--mono);
+    font-size: clamp(12px, 3vw, 13.5px);
+    line-height: 1.5;
+    color: var(--ink);
+    white-space: pre;
+    user-select: text;
+    -webkit-user-select: text;
+    touch-action: pan-y;
+    cursor: text;
+  }
+  .history-scroll::selection { background: rgba(124,192,255,0.35); }
+
+  /* ─────────────── SmartKeys (collapsible) ─────────────── */
+  .smartkeys-wrap {
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.25s cubic-bezier(.32,.72,0,1);
+    background: var(--bg-elev);
+    border-top: 1px solid var(--line);
+  }
+  .smartkeys-wrap.open { max-height: 54px; }
+  .smartkeys {
+    display: flex; gap: 6px;
+    padding: 7px 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    touch-action: pan-x;
+  }
+  .smartkeys::-webkit-scrollbar { display: none; }
+  .smartkey {
+    flex: 0 0 auto;
+    padding: 7px 12px;
+    border-radius: 9px;
+    background: var(--bg-raised);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 500;
+    border: 1px solid var(--line-strong);
+    min-width: 40px;
+    transition: transform 0.08s;
+  }
+  .smartkey:hover { background: var(--line-strong); }
+  .smartkey.sticky.on {
+    background: var(--accent);
+    color: #0a0f1b;
+    border-color: var(--accent);
+  }
+  .smartkey:active { transform: scale(0.94); }
+
+  /* ─────────────── Compose ─────────────── */
+  .compose {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    padding: 8px 10px 10px;
+    background: var(--bg-elev);
+    border-top: 1px solid var(--line);
+    align-items: end;
+  }
+  .compose textarea {
+    width: 100%;
+    min-height: 40px;
+    max-height: 160px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line-strong);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.35;
+    resize: none;
+    outline: none;
+    user-select: text;
+    -webkit-user-select: text;
+    touch-action: pan-y;
+  }
+  .compose textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,192,255,0.12); }
+  .compose textarea::placeholder { color: var(--ink-mute); }
+  .compose .send {
+    height: 40px;
+    padding: 0 16px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #0a0f1b;
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .compose .send:hover { background: #93cdff; }
+  .compose .send:active { background: #5faae8; }
+  .compose .send:disabled { background: var(--line-strong); color: var(--ink-mute); cursor: not-allowed; }
+
+  /* ─────────────── Drawers & sheets ─────────────── */
+  .scrim {
+    position: absolute; inset: 0;
+    background: rgba(5,8,14,0.6);
+    backdrop-filter: blur(2px);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 40;
+  }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+
+  .drawer {
+    position: absolute; top: 0; left: 0; bottom: 0;
+    width: min(86%, 340px);
+    background: var(--bg-elev);
+    border-right: 1px solid var(--line);
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(.32,.72,0,1);
+    z-index: 41;
+    display: flex; flex-direction: column;
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bot);
+  }
+  .drawer.open { transform: none; }
+  .drawer-head {
+    padding: 14px 16px 10px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .drawer-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
+  .drawer-head .add {
+    background: var(--accent);
+    color: #0a0f1b;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    font-size: 20px; line-height: 1;
+    display: grid; place-items: center; font-weight: 600;
+  }
+  .sess-list {
+    flex: 1; overflow-y: auto;
+    padding: 0 10px 20px;
+  }
+  .sess-card {
+    position: relative;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.15s;
+    touch-action: pan-y;
+  }
+  .sess-card:hover { border-color: var(--line-strong); }
+  .sess-card.active { border-color: var(--accent); background: #14203a; }
+  .sess-card .row1 {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 4px; gap: 8px;
+  }
+  .sess-card .name {
+    font-family: var(--mono); font-weight: 600; font-size: 14px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sess-card .meta { font-size: 11px; color: var(--ink-mute); flex-shrink: 0; }
+  .sess-card .preview {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink-dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-top: 2px;
+  }
+  .sess-card .status-dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ok); margin-right: 6px; vertical-align: middle;
+  }
+  .sess-card .status-dot.idle { background: var(--ink-mute); }
+
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: var(--bg-elev);
+    border-top-left-radius: 18px;
+    border-top-right-radius: 18px;
+    border-top: 1px solid var(--line);
+    transform: translateY(100%);
+    transition: transform 0.25s cubic-bezier(.32,.72,0,1);
+    z-index: 41;
+    padding-bottom: var(--safe-bot);
+  }
+  .sheet.open { transform: none; }
+  .sheet .grabber {
+    width: 40px; height: 4px; border-radius: 2px;
+    background: var(--line-strong);
+    margin: 8px auto 4px;
+  }
+  .sheet h3 {
+    margin: 4px 0 12px; font-size: 13px; font-weight: 500;
+    color: var(--ink-dim); text-align: center;
+    letter-spacing: 0.5px; text-transform: uppercase;
+  }
+  .cmd-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+    gap: 8px;
+    padding: 0 12px 20px;
+  }
+  .cmd-tile {
+    aspect-ratio: 1.1;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 6px;
+    color: var(--ink);
+    font-size: 11px;
+    padding: 6px;
+    transition: transform 0.08s, background 0.15s;
+  }
+  .cmd-tile .glyph { font-size: 22px; color: var(--accent); }
+  .cmd-tile:hover { background: var(--line-strong); }
+  .cmd-tile:active { transform: scale(0.96); }
+  .cmd-tile.danger .glyph { color: var(--err); }
+  .cmd-tile .kbd {
+    position: absolute;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--ink-mute);
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    margin-top: -54px; margin-left: 54px;
+  }
+
+  /* toast */
+  .toast {
+    position: absolute;
+    left: 50%; bottom: calc(80px + var(--safe-bot));
+    transform: translate(-50%, 60px);
+    background: rgba(17,24,39,0.95);
+    color: var(--ink);
+    padding: 9px 16px;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    font-size: 13px;
+    z-index: 60;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    max-width: 85%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* prototype banner */
+  .banner {
+    position: absolute; top: calc(var(--safe-top) + 52px); right: 10px;
+    z-index: 70;
+    font-size: 10px;
+    color: var(--ink-mute);
+    padding: 3px 8px;
+    background: rgba(10,15,27,0.8);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    backdrop-filter: blur(6px);
+    pointer-events: none;
+  }
+
+  /* keyboard hint for desktop */
+  .kbd-hints {
+    position: absolute; bottom: 12px; left: 12px;
+    z-index: 70;
+    font-size: 10px;
+    color: var(--ink-mute);
+    background: rgba(10,15,27,0.7);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 8px;
+    line-height: 1.6;
+    backdrop-filter: blur(6px);
+    display: none;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .kbd-hints { display: block; }
+  }
+  .kbd-hints kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--ink-dim);
+  }
+
+  /* cursor fallback for hover-capable devices */
+  @media (hover: hover) and (pointer: fine) {
+    .sess-card { cursor: pointer; }
+    .cmd-tile { cursor: pointer; }
+    .smartkey { cursor: pointer; }
+  }
+
+  /* ─────────────── Desktop / tablet-landscape (must stay LAST so overrides win) ─────────────── */
+  @media (min-width: 820px) {
+    #app {
+      grid-template-columns: minmax(240px, 300px) 1fr;
+      grid-template-rows: auto 1fr auto auto;
+      grid-template-areas:
+        "sidebar topbar"
+        "sidebar surface"
+        "sidebar smartkeys"
+        "sidebar compose";
+      max-width: none;
+    }
+    .topbar         { grid-area: topbar; }
+    .surface        { grid-area: surface; }
+    .smartkeys-wrap { grid-area: smartkeys; }
+    .compose        { grid-area: compose; }
+
+    .drawer {
+      position: static;
+      grid-area: sidebar;
+      width: auto;
+      transform: none !important;
+      border-right: 1px solid var(--line);
+      border-top: 0;
+      z-index: 1;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+    .scrim { display: none !important; }
+    #btn-sessions { display: none; }
+
+    .sheet { left: 300px; }
+    .banner { right: 10px; top: calc(var(--safe-top) + 52px); }
+    .kbd-hints { right: 12px; left: auto; bottom: 72px; }
+  }
+  @media (min-width: 1280px) {
+    body { font-size: 16px; }
+    #app { grid-template-columns: 320px 1fr; }
+    .sheet { left: 320px; }
+  }
+  @media (min-width: 1600px) {
+    #app { grid-template-columns: 360px 1fr; }
+    .sheet { left: 360px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- TopBar -->
+  <div class="topbar">
+    <button class="icon-btn" id="btn-sessions" title="Sessions" aria-label="sessions">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <button class="icon-btn" id="btn-history" title="History" aria-label="history">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    </button>
+    <div class="title-wrap" id="title-wrap">
+      <div class="session-name" id="session-name">main</div>
+      <div class="window-strip" id="window-strip"></div>
+    </div>
+    <button class="icon-btn" id="btn-keys" title="Smart keys" aria-label="smart keys">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
+    </button>
+    <button class="icon-btn" id="btn-cmd" title="Commands" aria-label="commands">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3a3 3 0 0 1 3 3v3H9a3 3 0 1 1 0-6z"/><path d="M15 21a3 3 0 0 1-3-3v-3h3a3 3 0 1 1 0 6z"/><path d="M21 9a3 3 0 0 1-3 3h-3V9a3 3 0 1 1 6 0z"/><path d="M3 15a3 3 0 0 1 3-3h3v3a3 3 0 1 1-6 0z"/></svg>
+    </button>
+    <button class="icon-btn" id="btn-more" title="More" aria-label="more">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+    </button>
+  </div>
+
+  <!-- Surface: live + history layers -->
+  <div class="surface" id="surface">
+    <div class="pull-hint" id="pull-hint">下拉查看历史 · 可选中复制</div>
+
+    <div class="layer history" id="layer-history">
+      <div class="history-head">
+        <button id="btn-history-back">← Live</button>
+        <div class="history-title" id="history-title">scrollback</div>
+        <button id="btn-history-copy">复制</button>
+      </div>
+      <div class="history-scroll" id="history-scroll"></div>
+    </div>
+
+    <div class="layer live" id="layer-live">
+      <div class="term-view" id="term-view"></div>
+      <div class="pane-dots" id="pane-dots"></div>
+    </div>
+  </div>
+
+  <!-- SmartKeys (collapsible) -->
+  <div class="smartkeys-wrap" id="smartkeys-wrap">
+    <div class="smartkeys" id="smartkeys"></div>
+  </div>
+
+  <!-- Compose -->
+  <div class="compose">
+    <textarea id="compose-input" rows="1" placeholder="在此输入，发送到当前 pane…"></textarea>
+    <button class="send" id="btn-send">Send ↵</button>
+  </div>
+
+  <!-- Overlays live inside #app so they inherit the desktop viewport frame -->
+  <div class="scrim" id="scrim-drawer"></div>
+  <div class="drawer" id="drawer">
+    <div class="drawer-head">
+      <h2>Sessions</h2>
+      <button class="add" id="btn-new-session" title="new session">+</button>
+    </div>
+    <div class="sess-list" id="sess-list"></div>
+  </div>
+
+  <div class="scrim" id="scrim-sheet"></div>
+  <div class="sheet" id="sheet">
+    <div class="grabber"></div>
+    <h3>tmux 命令</h3>
+    <div class="cmd-grid" id="cmd-grid"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="banner">prototype · v0.4</div>
+  <div class="kbd-hints">
+    <div><kbd>Enter</kbd> 发送　<kbd>Shift+Enter</kbd> 换行</div>
+    <div><kbd>Esc</kbd> 关抽屉　<kbd>Ctrl/⌘+K</kbd> 命令</div>
+    <div><kbd>Ctrl/⌘+↑</kbd> 历史　<kbd>Ctrl/⌘+/</kbd> 键盘条</div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // ────────── Fake data ──────────
+  const sessions = [
+    { name: 'main', windows: 3, activeWin: 0, attached: true, lastActive: '刚刚', preview: '● Edited src/backend/server.ts (+12 -3)' },
+    { name: 'claude-dev', windows: 2, activeWin: 0, attached: true, lastActive: '2m', preview: 'Claude Code · waiting for approval' },
+    { name: 'build-watch', windows: 1, activeWin: 0, attached: false, lastActive: '14m', preview: 'npm run dev · vite ready in 312ms' },
+    { name: 'aider-refactor', windows: 1, activeWin: 0, attached: false, lastActive: '1h', preview: 'aider> committing changes to 4 files' },
+  ];
+  let currentSession = 0;
+  let currentWindow = 0;
+  let currentPane = 0;
+
+  const termFrames = {
+    'main': [
+      ['<span class="dim">claude@vmi ~/repos/TM-Agent (main)</span>', '<span class="prompt">$</span> <span class="user">npm run dev</span>', '', '<span class="dim">&gt; tm-agent@0.1.0 dev</span>', '<span class="dim">&gt; concurrently "npm:dev:*"</span>', '', '<span class="ok">[backend] listening 127.0.0.1:8767</span>', '<span class="ok">[frontend] vite ready in 312ms</span>', '', '<span class="dim">╭────────── Claude Code ─────────────╮</span>', '<span class="dim">│</span> <span class="claude">● I\'ll help refactor the shell     </span><span class="dim">│</span>', '<span class="dim">│</span> <span class="claude">layout for mobile.                </span><span class="dim">│</span>', '<span class="dim">│</span>                                    <span class="dim">│</span>', '<span class="dim">│</span> <span class="tool">⚒ Read(src/frontend/App.tsx)</span>       <span class="dim">│</span>', '<span class="dim">│</span>   <span class="dim">↳ 1024 lines</span>                    <span class="dim">│</span>', '<span class="dim">│</span> <span class="tool">⚒ Edit(src/frontend/App.tsx)</span>       <span class="dim">│</span>', '<span class="dim">│</span>   <span class="ok">+12</span> <span class="warn">-3</span>                         <span class="dim">│</span>', '<span class="dim">│</span>                                    <span class="dim">│</span>', '<span class="dim">│</span> <span class="claude">● Changes applied. Should I also  </span><span class="dim">│</span>', '<span class="dim">│</span> <span class="claude">extract the TopBar into its own?  </span><span class="dim">│</span>', '<span class="dim">╰────────────────────────────────────╯</span>', '<span class="prompt">&gt;</span> <span class="cursor"></span>'],
+      ['<span class="dim">╭─ nvim · src/frontend/App.tsx ────╮</span>', '<span class="dim">│</span> <span class="warn"> 1</span> import React from "react";    <span class="dim">│</span>', '<span class="dim">│</span> <span class="warn"> 2</span> import { Terminal } from ...   <span class="dim">│</span>', '<span class="dim">│</span> <span class="warn"> 3</span>                                <span class="dim">│</span>', '<span class="dim">│</span> <span class="warn"> 4</span> export const App = () =&gt; {    <span class="dim">│</span>', '<span class="dim">│</span> <span class="warn"> 5</span>   return &lt;div&gt;hi&lt;/div&gt;;     <span class="dim">│</span>', '<span class="dim">│</span> <span class="warn"> 6</span> };                              <span class="dim">│</span>', '<span class="dim">╰──────────────────────────────────╯</span>', '<span class="dim">-- INSERT --</span> <span class="cursor"></span>'],
+      ['<span class="dim">htop · 12:34:56</span>', '', '<span class="ok">CPU</span> ▰▰▰▱▱▱▱▱▱▱ 28%', '<span class="ok">MEM</span> ▰▰▰▰▰▱▱▱▱▱ 51%', '<span class="warn">SWP</span> ▰▱▱▱▱▱▱▱▱▱ 8%', '', '<span class="dim">PID  USER   %CPU COMMAND</span>', '1303 root    4.2 node dist/backend/cli.js', '1421 claude  2.1 nvim', ' 892 root    0.4 nginx: worker'],
+    ],
+    'claude-dev': [
+      ['<span class="claude">● Welcome to Claude Code</span>', '', '<span class="dim">Working on: src/frontend/components/</span>', '', '<span class="tool">⚒ Grep(pattern: "useState")</span>', '  <span class="dim">found 8 matches in 3 files</span>', '', '<span class="tool">⚒ Read(App.tsx:1-50)</span>', '', '<span class="claude">● The component uses class-based state.</span>', '<span class="claude">  Want me to migrate to hooks?</span>', '', '<span class="warn">⏸ Waiting for approval to edit App.tsx</span>', '<span class="dim">   [y] yes  [n] no  [a] always</span>', '<span class="cursor"></span>'],
+      ['<span class="prompt">$</span> git log --oneline -5', 'a8b2c1d fix: mobile viewport bug', '9f3e4a2 feat: add pull-to-history', '7c8d5b1 chore: bump deps', '3e1f9c4 refactor: extract TopBar', '1a2b3c4 initial mobile shell'],
+    ],
+    'build-watch': [
+      ['<span class="prompt">$</span> npm run dev', '', '<span class="ok">VITE v7.3.1</span>  ready in 312ms', '', '<span class="dim">➜</span>  Local:   http://localhost:5173/', '<span class="dim">➜</span>  Network: use --host', '', '<span class="dim">hmr update /src/App.tsx 10:24:11</span>', '<span class="dim">hmr update /src/App.tsx 10:24:43</span>', '<span class="dim">hmr update /src/styles/app.css 10:25:02</span>', '<span class="ok">✔ build complete</span>', '<span class="cursor"></span>'],
+    ],
+    'aider-refactor': [
+      ['<span class="dim">aider v0.60 · sonnet</span>', '<span class="dim">added src/auth.ts, src/server.ts</span>', '', '<span class="prompt">aider&gt;</span> <span class="user">extract auth middleware</span>', '', '<span class="claude">I\'ll extract the auth middleware into</span>', '<span class="claude">its own file for clarity.</span>', '', '<span class="tool">Applied edit to src/middleware/auth.ts</span>', '<span class="tool">Applied edit to src/server.ts</span>', '', '<span class="ok">Commit a1b2c3d  extract auth middleware</span>', '<span class="prompt">aider&gt;</span> <span class="cursor"></span>'],
+    ],
+  };
+
+  const historyText = `$ npm test
+
+> tm-agent@0.1.0 test
+> vitest run
+
+ RUN  v4.0.18 /path/to/TM-Agent
+
+ ✓ tests/auth/auth-service.test.ts  (8 tests) 14ms
+ ✓ tests/tmux/cli-executor.test.ts  (12 tests) 22ms
+ ✓ tests/state/state-monitor.test.ts  (6 tests) 9ms
+ ✓ tests/pty/terminal-runtime.test.ts  (10 tests) 18ms
+ ✓ tests/server/control-ws.test.ts  (14 tests) 31ms
+ ✓ tests/server/terminal-ws.test.ts  (7 tests) 17ms
+
+ Test Files  6 passed (6)
+      Tests  57 passed (57)
+   Start at  14:23:01
+   Duration  512ms
+
+$ git diff src/frontend/App.tsx
+diff --git a/src/frontend/App.tsx b/src/frontend/App.tsx
+index a8b2c1d..9f3e4a2 100644
+--- a/src/frontend/App.tsx
++++ b/src/frontend/App.tsx
+@@ -487,6 +487,12 @@ export const App = () => {
+     const terminal = new Terminal({
+       cursorBlink: true,
+       fontFamily: "'MesloLGS NF', Menlo, monospace",
++      // mobile: disable xterm scrollback; history is a DOM layer
++      scrollback: 0,
++      disableStdin: false,
++      allowProposedApi: true,
++      allowTransparency: true,
++      theme: themeConfig?.xterm,
+     });
+
+     return terminal;
+
+$ ls -la src/frontend/
+total 92
+drwxr-xr-x 4 claude claude  4096 Apr 19 14:32 .
+drwxr-xr-x 5 claude claude  4096 Apr 19 14:20 ..
+-rw-r--r-- 1 claude claude 36842 Apr 19 14:30 App.tsx
+-rw-r--r-- 1 claude claude  2481 Apr 19 14:25 main.tsx
+drwxr-xr-x 2 claude claude  4096 Apr 19 14:20 components
+drwxr-xr-x 2 claude claude  4096 Apr 19 14:25 styles
+-rw-r--r-- 1 claude claude  1102 Apr 19 14:20 types.ts
+
+$ claude "explain the auth flow in 2 sentences"
+
+● Token 从 URL query 读入,password 从 localStorage 或弹窗
+  读入,两者都通过 WebSocket auth 消息送后端;后端在
+  AuthService.verify 里双因子校验——token 恒等,password
+  常量时间比较,任一失败返回 auth_error 并关闭连接。
+
+$ echo "that's a wrap"
+that's a wrap
+
+$ tmux ls
+main: 3 windows (attached)
+claude-dev: 2 windows (attached)
+build-watch: 1 windows
+aider-refactor: 1 windows
+`;
+
+  // ────────── Helpers ──────────
+  const $ = (id) => document.getElementById(id);
+  const toast = (msg) => {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._h);
+    toast._h = setTimeout(() => t.classList.remove('show'), 1400);
+  };
+  const sess = () => sessions[currentSession];
+
+  // ────────── Render ──────────
+  function renderTopBar() {
+    const s = sess();
+    $('session-name').textContent = s.name;
+    const strip = $('window-strip');
+    strip.innerHTML = '';
+    for (let i = 0; i < s.windows; i++) {
+      const d = document.createElement('div');
+      d.className = 'window-dot' + (i === currentWindow ? ' active' : '');
+      strip.appendChild(d);
+    }
+    $('history-title').textContent = `${s.name} · win ${currentWindow} · scrollback`;
+  }
+  function renderTerm() {
+    const s = sess();
+    const frames = termFrames[s.name] || [['<span class="dim">(no output)</span>']];
+    const frame = frames[currentWindow % frames.length];
+    $('term-view').innerHTML = frame.map(l => `<div class="line">${l || '&nbsp;'}</div>`).join('');
+
+    const dots = $('pane-dots');
+    const paneCount = 2;
+    dots.innerHTML = '';
+    for (let i = 0; i < paneCount; i++) {
+      const d = document.createElement('div');
+      d.className = 'pane-dot' + (i === currentPane ? ' active' : '');
+      dots.appendChild(d);
+    }
+  }
+  function renderSessList() {
+    const list = $('sess-list');
+    list.innerHTML = '';
+    sessions.forEach((s, i) => {
+      const c = document.createElement('div');
+      c.className = 'sess-card' + (i === currentSession ? ' active' : '');
+      c.innerHTML = `
+        <div class="row1">
+          <span class="name"><span class="status-dot${s.attached ? '' : ' idle'}"></span>${s.name}</span>
+          <span class="meta">${s.windows} win · ${s.lastActive}</span>
+        </div>
+        <div class="preview">${s.preview}</div>
+      `;
+      c.addEventListener('click', () => {
+        if (c._swipeMoved) return;
+        currentSession = i; currentWindow = 0; currentPane = 0;
+        renderTopBar(); renderTerm(); renderSessList();
+        closeDrawer();
+        toast(`attach → ${s.name}`);
+      });
+      attachSessSwipe(c, i);
+      list.appendChild(c);
+    });
+  }
+  function renderSmartKeys() {
+    const keys = [
+      { label: 'Esc', seq: 'ESC' }, { label: 'Tab', seq: 'TAB' },
+      { label: 'Ctrl', seq: 'CTRL', sticky: true },
+      { label: '↑', seq: 'UP' }, { label: '↓', seq: 'DOWN' },
+      { label: '←', seq: 'LEFT' }, { label: '→', seq: 'RIGHT' },
+      { label: '/', seq: '/' }, { label: '|', seq: '|' },
+      { label: '~', seq: '~' }, { label: '-', seq: '-' }, { label: '_', seq: '_' },
+    ];
+    const bar = $('smartkeys');
+    bar.innerHTML = '';
+    keys.forEach(k => {
+      const b = document.createElement('button');
+      b.className = 'smartkey' + (k.sticky ? ' sticky' : '');
+      b.textContent = k.label;
+      b.addEventListener('click', () => {
+        if (k.sticky) { b.classList.toggle('on'); toast(`${k.label} ${b.classList.contains('on') ? 'on' : 'off'}`); }
+        else { toast(`send → ${k.seq}`); }
+      });
+      bar.appendChild(b);
+    });
+  }
+  function renderCmdGrid() {
+    const cmds = [
+      { g: '+', l: '新窗口' }, { g: '⊟', l: '水平分' }, { g: '⊟', l: '垂直分' },
+      { g: '⤢', l: '放大/还原' }, { g: '⟲', l: '重命名' }, { g: '✕', l: '杀面板', danger: true },
+      { g: '⟳', l: '刷新' }, { g: '⎘', l: '拷贝屏' },
+      { g: '⇥', l: '下窗口' }, { g: '⇤', l: '上窗口' },
+      { g: '↗', l: '脱离' }, { g: '🗑', l: '杀会话', danger: true },
+    ];
+    const grid = $('cmd-grid');
+    grid.innerHTML = '';
+    cmds.forEach(c => {
+      const t = document.createElement('button');
+      t.className = 'cmd-tile' + (c.danger ? ' danger' : '');
+      t.innerHTML = `<div class="glyph">${c.g}</div><div>${c.l}</div>`;
+      t.addEventListener('click', () => { toast(`${c.l} → sent`); closeSheet(); });
+      grid.appendChild(t);
+    });
+  }
+
+  // ────────── Drawer / Sheet / History controls ──────────
+  const isDrawerOpen  = () => $('drawer').classList.contains('open');
+  const isSheetOpen   = () => $('sheet').classList.contains('open');
+  const isHistoryOpen = () => document.body.classList.contains('history-open');
+  const isKeysOpen    = () => $('smartkeys-wrap').classList.contains('open');
+
+  function openDrawer() {
+    $('drawer').classList.add('open'); $('scrim-drawer').classList.add('open');
+    $('btn-sessions').classList.add('on');
+  }
+  function closeDrawer() {
+    $('drawer').classList.remove('open'); $('scrim-drawer').classList.remove('open');
+    $('btn-sessions').classList.remove('on');
+  }
+  function openSheet() {
+    $('sheet').classList.add('open'); $('scrim-sheet').classList.add('open');
+    $('btn-cmd').classList.add('on');
+  }
+  function closeSheet() {
+    $('sheet').classList.remove('open'); $('scrim-sheet').classList.remove('open');
+    $('btn-cmd').classList.remove('on');
+  }
+  function openHistory() {
+    document.body.classList.add('history-open');
+    $('history-scroll').textContent = historyText;
+    $('btn-history').classList.add('on');
+  }
+  function closeHistory() {
+    document.body.classList.remove('history-open');
+    $('btn-history').classList.remove('on');
+  }
+  function openKeys() {
+    $('smartkeys-wrap').classList.add('open');
+    $('btn-keys').classList.add('on');
+  }
+  function closeKeys() {
+    $('smartkeys-wrap').classList.remove('open');
+    $('btn-keys').classList.remove('on');
+  }
+
+  const toggleDrawer  = () => (isDrawerOpen()  ? closeDrawer()  : openDrawer());
+  const toggleSheet   = () => (isSheetOpen()   ? closeSheet()   : openSheet());
+  const toggleHistory = () => (isHistoryOpen() ? closeHistory() : openHistory());
+  const toggleSmartKeys = () => (isKeysOpen()  ? closeKeys()    : openKeys());
+
+  $('btn-sessions').addEventListener('click', toggleDrawer);
+  $('scrim-drawer').addEventListener('click', closeDrawer);
+  $('btn-new-session').addEventListener('click', (e) => { e.stopPropagation(); toast('tmux new-session'); });
+  $('btn-cmd').addEventListener('click', toggleSheet);
+  $('scrim-sheet').addEventListener('click', closeSheet);
+  $('btn-keys').addEventListener('click', toggleSmartKeys);
+  $('btn-history').addEventListener('click', toggleHistory);
+  $('btn-history-back').addEventListener('click', closeHistory);
+  $('btn-history-copy').addEventListener('click', async () => {
+    const sel = window.getSelection()?.toString();
+    const text = sel && sel.length ? sel : historyText;
+    try { await navigator.clipboard.writeText(text); toast(sel ? '已复制选区' : '已复制全部'); }
+    catch { toast('复制失败'); }
+  });
+  $('btn-more').addEventListener('click', () => toast('⋯ (占位)'));
+
+  // ────────── Compose ──────────
+  const input = $('compose-input');
+  const resizeInput = () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+  };
+  input.addEventListener('input', resizeInput);
+  const send = () => {
+    const v = input.value.trim();
+    if (!v) return;
+    toast(`→ ${v.slice(0, 40)}`);
+    input.value = ''; resizeInput();
+  };
+  $('btn-send').addEventListener('click', send);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault(); send();
+    }
+  });
+
+  // ────────── Pointer gesture helpers ──────────
+  // Unified pointer-event dragger
+  function makeDrag(el, opts) {
+    let active = false, sx = 0, sy = 0, axis = null, id = null;
+    el.addEventListener('pointerdown', (e) => {
+      if (opts.ignore && opts.ignore(e)) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      active = true; id = e.pointerId;
+      sx = e.clientX; sy = e.clientY; axis = null;
+      opts.onStart && opts.onStart(e);
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!active || e.pointerId !== id) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (!axis && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+        axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+        if (opts.onAxis && opts.onAxis(axis, e) === false) { active = false; return; }
+        try { el.setPointerCapture(id); } catch {}
+      }
+      opts.onMove && opts.onMove({ dx, dy, axis, e });
+    });
+    const finish = (e) => {
+      if (!active || (id !== null && e.pointerId !== id)) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      opts.onEnd && opts.onEnd({ dx, dy, axis, cancelled: e.type === 'pointercancel' });
+      active = false; axis = null; id = null;
+    };
+    el.addEventListener('pointerup', finish);
+    el.addEventListener('pointercancel', finish);
+  }
+
+  // ────────── TopBar: swipe title = switch window; long-press title = drawer ──────────
+  (function topbarGestures() {
+    const titleEl = $('title-wrap');
+    let longTimer = null, moved = false;
+    makeDrag(titleEl, {
+      onStart: () => {
+        moved = false;
+        longTimer = setTimeout(() => { if (!moved) openDrawer(); }, 550);
+      },
+      onMove: ({ dx, dy }) => {
+        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) { moved = true; clearTimeout(longTimer); }
+      },
+      onEnd: ({ dx, axis }) => {
+        clearTimeout(longTimer);
+        if (axis !== 'x') return;
+        const s = sess();
+        if (dx > 40 && currentWindow > 0) { currentWindow--; renderTopBar(); renderTerm(); toast(`win ${currentWindow+1}/${s.windows}`); }
+        else if (dx < -40 && currentWindow < s.windows - 1) { currentWindow++; renderTopBar(); renderTerm(); toast(`win ${currentWindow+1}/${s.windows}`); }
+      }
+    });
+    // desktop: click title = open drawer (same as hamburger, for discoverability)
+    titleEl.addEventListener('click', (e) => {
+      // prevent click if a drag just finished (rough)
+    });
+  })();
+
+  // ────────── Surface: pull-down = history; horizontal = switch pane ──────────
+  (function surfaceGestures() {
+    const surface = $('surface');
+    const live = $('layer-live');
+    const hint = $('pull-hint');
+    let y = 0;
+    const H = () => surface.getBoundingClientRect().height;
+
+    makeDrag(surface, {
+      ignore: () => document.body.classList.contains('history-open'),
+      onStart: () => { y = 0; },
+      onAxis: (axis) => true,
+      onMove: ({ dx, dy, axis }) => {
+        if (axis === 'y' && dy > 0) {
+          y = Math.min(dy, H());
+          live.classList.add('dragging');
+          live.style.transform = `translateY(${y}px)`;
+          hint.classList.toggle('visible', y > 30);
+        }
+      },
+      onEnd: ({ dx, axis, cancelled }) => {
+        live.classList.remove('dragging');
+        live.style.transform = '';
+        hint.classList.remove('visible');
+        if (cancelled) { y = 0; return; }
+        if (axis === 'y' && y > 90) { openHistory(); }
+        else if (axis === 'x' && Math.abs(dx) > 50) {
+          if (dx < 0 && currentPane < 1) { currentPane++; renderTerm(); toast(`pane ${currentPane+1}/2`); }
+          else if (dx > 0 && currentPane > 0) { currentPane--; renderTerm(); toast(`pane ${currentPane+1}/2`); }
+        }
+        y = 0;
+      }
+    });
+  })();
+
+  // ────────── Session-card left-swipe = hint kill ──────────
+  function attachSessSwipe(card, idx) {
+    card._swipeMoved = false;
+    makeDrag(card, {
+      onStart: () => { card._swipeMoved = false; card.style.transition = 'none'; },
+      onMove: ({ dx, axis }) => {
+        if (axis === 'x') {
+          card._swipeMoved = true;
+          if (dx < 0) card.style.transform = `translateX(${Math.max(dx, -80)}px)`;
+        }
+      },
+      onEnd: ({ dx, axis }) => {
+        card.style.transition = '';
+        card.style.transform = '';
+        if (axis === 'x' && dx < -60) {
+          toast(`kill-session ${sessions[idx].name}`);
+        }
+        setTimeout(() => { card._swipeMoved = false; }, 50);
+      }
+    });
+  }
+
+  // ────────── Keyboard shortcuts ──────────
+  document.addEventListener('keydown', (e) => {
+    const inField = ['TEXTAREA', 'INPUT'].includes(document.activeElement?.tagName);
+    const mod = e.ctrlKey || e.metaKey;
+
+    // Esc: close overlays in priority order
+    if (e.key === 'Escape') {
+      if ($('sheet').classList.contains('open')) { closeSheet(); e.preventDefault(); return; }
+      if ($('drawer').classList.contains('open')) { closeDrawer(); e.preventDefault(); return; }
+      if (document.body.classList.contains('history-open')) { closeHistory(); e.preventDefault(); return; }
+      return;
+    }
+
+    if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); toggleSheet(); return; }
+    if (mod && e.key === 'ArrowUp')        { e.preventDefault(); toggleHistory(); return; }
+    if (mod && e.key === '/')              { e.preventDefault(); toggleSmartKeys(); return; }
+    if (mod && e.key.toLowerCase() === 'b') { e.preventDefault(); toggleDrawer(); return; }
+
+    if (inField) return; // don't hijack typing
+
+    // Window nav via Alt+←/→
+    if (e.altKey && e.key === 'ArrowLeft')  {
+      if (currentWindow > 0) { currentWindow--; renderTopBar(); renderTerm(); toast(`win ${currentWindow+1}/${sess().windows}`); }
+      e.preventDefault(); return;
+    }
+    if (e.altKey && e.key === 'ArrowRight') {
+      if (currentWindow < sess().windows - 1) { currentWindow++; renderTopBar(); renderTerm(); toast(`win ${currentWindow+1}/${sess().windows}`); }
+      e.preventDefault(); return;
+    }
+  });
+
+  // ────────── Boot ──────────
+  renderTopBar(); renderTerm(); renderSessList(); renderSmartKeys(); renderCmdGrid();
+  setTimeout(() => toast('下拉看历史 · Ctrl+K 命令 · Alt+←/→ 切窗口'), 600);
+})();
+</script>
+</body>
+</html>

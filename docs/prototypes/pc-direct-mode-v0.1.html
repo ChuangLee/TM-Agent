@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>TM-Agent · PC 直通模式原型 v0.1</title>
+<style>
+  :root {
+    --bg: #0c0e12;
+    --bg-elev: #14171d;
+    --bg-elev-hi: #1c2029;
+    --line: #232832;
+    --ink: #e7ecf3;
+    --ink-dim: #8891a0;
+    --accent: #7dd3fc;
+    --accent-on: #052740;
+    --ok: #4ade80;
+    --ui-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono-font: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100dvh; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--ui-font);
+    font-size: 14px;
+    line-height: 20px;
+    overflow: hidden;
+  }
+
+  .app {
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    grid-template-columns: 260px 1fr;
+    grid-template-areas:
+      "sidebar topbar"
+      "sidebar action-panel"
+      "sidebar main"
+      "sidebar compose";
+    height: 100dvh;
+  }
+  .app.no-action-panel {
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "sidebar topbar"
+      "sidebar main"
+      "sidebar compose";
+  }
+  .app.no-action-panel .action-panel-desktop { display: none; }
+
+  /* TopBar */
+  .topbar {
+    grid-area: topbar;
+    height: 48px;
+    padding: 0 16px;
+    display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .topbar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  .topbar .name { flex: 1; font-size: 14px; }
+  .topbar .sub { color: var(--ink-dim); margin-left: 6px; font-size: 13px; }
+  .topbar .btn {
+    height: 32px; padding: 0 14px; border-radius: 6px;
+    background: transparent; color: var(--ink);
+    border: 1px solid var(--line);
+    font-size: 13px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background 120ms;
+  }
+  .topbar .btn:hover { background: var(--bg-elev-hi); }
+  .topbar .btn.direct-mode-btn.active {
+    background: var(--accent); color: var(--accent-on); border-color: var(--accent);
+    font-weight: 600;
+  }
+  .topbar .menu {
+    width: 32px; height: 32px; background: transparent; border: 0; color: var(--ink); font-size: 18px;
+    border-radius: 6px; cursor: pointer;
+  }
+  .topbar .menu:hover { background: var(--bg-elev-hi); }
+
+  /* ActionPanel (desktop compact) */
+  .action-panel-desktop {
+    grid-area: action-panel;
+    height: 40px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .action-panel-desktop::-webkit-scrollbar { display: none; }
+  .action-panel-desktop .card {
+    height: 28px; padding: 0 10px; border-radius: 6px;
+    background: var(--bg-elev);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    font-family: var(--mono-font);
+    font-size: 13px;
+    display: inline-flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+    cursor: pointer;
+    position: relative;
+    transition: background 80ms, transform 80ms;
+  }
+  .action-panel-desktop .card:hover {
+    background: var(--bg-elev-hi);
+  }
+  .action-panel-desktop .card:active {
+    transform: scale(0.97);
+    border-color: var(--accent);
+  }
+  .action-panel-desktop .card.special { font-family: var(--ui-font); }
+  .action-panel-desktop .card .kbd {
+    position: absolute; bottom: 1px; right: 4px;
+    font-size: 9px; color: var(--ink-dim);
+    font-family: var(--ui-font);
+    opacity: 0; transition: opacity 120ms;
+  }
+  .action-panel-desktop .card:hover .kbd { opacity: 1; }
+  .action-panel-desktop .card.big-stop {
+    background: rgba(248, 113, 113, 0.12);
+    color: var(--err); border-color: var(--err);
+    font-weight: 600;
+  }
+
+  /* Desktop prompt banner (replaces action-panel slot) */
+  .prompt-banner-desktop {
+    grid-area: action-panel;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-elev);
+    display: none;
+    align-items: center; gap: 12px;
+  }
+  .prompt-banner-desktop h5 {
+    margin: 0; font-size: 13px; font-weight: 500; color: var(--ink-dim);
+    flex: 1;
+  }
+  .prompt-banner-desktop h5 b { color: var(--ink); font-weight: 600; }
+  .prompt-banner-desktop button {
+    height: 32px; padding: 0 14px; border-radius: 6px;
+    font-weight: 600; border: 1px solid transparent; font-size: 13px; cursor: pointer;
+  }
+  .prompt-banner-desktop .btn-yes {
+    background: var(--accent); color: var(--accent-on);
+  }
+  .prompt-banner-desktop .btn-no {
+    background: transparent; color: var(--ink); border-color: var(--line);
+  }
+  .prompt-banner-desktop input[type="password"] {
+    flex: 1; height: 32px; padding: 0 10px;
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 6px;
+    font-size: 14px;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    grid-area: sidebar;
+    background: var(--bg-elev);
+    border-right: 1px solid var(--line);
+    padding: 12px;
+    overflow-y: auto;
+  }
+  .sidebar h3 {
+    margin: 0 0 12px;
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--ink-dim); font-weight: 600;
+  }
+  .sidebar .session {
+    padding: 8px 10px; border-radius: 6px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px;
+  }
+  .sidebar .session:hover { background: var(--bg-elev-hi); }
+  .sidebar .session.active { background: var(--bg-elev-hi); border: 1px solid var(--line); }
+  .sidebar .session .name { flex: 1; }
+  .sidebar .session .cmd { color: var(--ink-dim); font-family: var(--mono-font); font-size: 11px; }
+
+  /* Surface */
+  .main {
+    grid-area: main;
+    position: relative;
+    overflow: hidden;
+    padding: 12px 16px;
+    background: var(--bg);
+  }
+  .tm-scroller {
+    height: 100%;
+    overflow: auto;
+    font-family: var(--mono-font);
+    font-size: 14px;
+    line-height: 18px;
+    white-space: pre;
+    position: relative;
+    z-index: 1;
+    padding: 8px 4px;
+    border-radius: 6px;
+  }
+  .tm-scroller .dim { color: var(--ink-dim); }
+  .tm-scroller .cursor {
+    display: inline-block;
+    width: 8px; height: 14px;
+    background: var(--accent);
+    vertical-align: text-bottom;
+    animation: blink 1s infinite step-end;
+  }
+  @keyframes blink { 50% { opacity: 0.2; } }
+
+  /* Compose bar */
+  .compose {
+    grid-area: compose;
+    padding: 10px 16px;
+    border-top: 1px solid var(--line);
+    display: flex; gap: 10px; align-items: center;
+    background: var(--bg);
+  }
+  .compose input {
+    flex: 1; height: 40px; padding: 0 12px;
+    background: var(--bg-elev);
+    color: var(--ink);
+    border: 1px solid var(--line); border-radius: 6px;
+    font-family: var(--mono-font); font-size: 14px;
+  }
+  .compose button {
+    height: 40px; padding: 0 16px; border-radius: 6px;
+    background: var(--accent); color: var(--accent-on); border: 0;
+    font-weight: 600; cursor: pointer;
+  }
+
+  /* Direct Mode active state */
+  body[data-direct-mode="active"] .tm-scroller,
+  body[data-direct-mode="entering"] .tm-scroller {
+    box-shadow: 0 0 0 2px var(--accent), 0 0 32px rgba(125, 211, 252, 0.4);
+    animation: direct-mode-pulse 3s ease-in-out infinite;
+  }
+  body[data-direct-mode="active"] .topbar,
+  body[data-direct-mode="active"] .sidebar,
+  body[data-direct-mode="active"] .compose,
+  body[data-direct-mode="entering"] .topbar,
+  body[data-direct-mode="entering"] .sidebar,
+  body[data-direct-mode="entering"] .compose {
+    filter: blur(4px) grayscale(30%) opacity(0.4);
+    transition: filter 200ms ease-out;
+  }
+  /* base (no direct-mode): transition back smoothly too */
+  .topbar, .sidebar, .compose {
+    transition: filter 200ms ease-out;
+  }
+
+  @keyframes direct-mode-pulse {
+    0%, 100% { box-shadow: 0 0 0 2px var(--accent), 0 0 24px rgba(125, 211, 252, 0.30); }
+    50%      { box-shadow: 0 0 0 2px var(--accent), 0 0 44px rgba(125, 211, 252, 0.60); }
+  }
+
+  /* Indicator bar */
+  .direct-mode-indicator {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: 40px;
+    background: var(--accent);
+    color: var(--accent-on);
+    display: none;
+    align-items: center; justify-content: center;
+    gap: 12px;
+    font-size: 13px; font-weight: 600;
+    z-index: 2000;
+    padding: 0 16px;
+    box-shadow: 0 2px 16px rgba(125, 211, 252, 0.3);
+  }
+  body[data-direct-mode="active"] .direct-mode-indicator,
+  body[data-direct-mode="entering"] .direct-mode-indicator { display: flex; }
+
+  .direct-mode-indicator .pulse {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: white;
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7);
+    animation: indicator-pulse 1.2s ease-out infinite;
+  }
+  @keyframes indicator-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(255,255,255,0.6); }
+    70% { box-shadow: 0 0 0 14px rgba(255,255,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+  }
+  .direct-mode-indicator .hint { opacity: 0.9; font-weight: 400; }
+  .direct-mode-indicator kbd {
+    background: var(--accent-on); color: var(--accent);
+    padding: 2px 6px; border-radius: 4px;
+    font-family: var(--mono-font); font-size: 12px;
+    margin: 0 2px;
+  }
+  .direct-mode-indicator .exit-btn {
+    margin-left: auto;
+    height: 28px; padding: 0 12px;
+    background: transparent; color: var(--accent-on);
+    border: 1px solid var(--accent-on);
+    border-radius: 4px; font-size: 12px; font-weight: 600;
+    cursor: pointer;
+  }
+  .direct-mode-indicator .exit-btn:hover { background: rgba(5, 39, 64, 0.15); }
+
+  /* Explain panel (prototype-only) */
+  .explain {
+    position: fixed; bottom: 16px; right: 16px;
+    background: var(--bg-elev-hi);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 14px;
+    max-width: 320px;
+    font-size: 12px; line-height: 18px;
+    color: var(--ink-dim);
+    z-index: 1500;
+  }
+  .explain b { color: var(--ink); }
+  .explain code {
+    background: var(--bg); padding: 1px 5px; border-radius: 3px;
+    font-family: var(--mono-font); font-size: 11px;
+  }
+  body[data-direct-mode="active"] .explain { filter: blur(4px) opacity(0.4); }
+
+  /* IME composition floater */
+  .ime-floater {
+    position: fixed;
+    background: var(--bg-elev-hi);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: var(--mono-font); font-size: 13px;
+    color: var(--accent);
+    z-index: 2100;
+    pointer-events: none;
+    display: none;
+  }
+  .ime-floater.show { display: block; }
+
+  /* Send toast */
+  .toast {
+    position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+    background: var(--bg-elev-hi); color: var(--ink);
+    border: 1px solid var(--line);
+    padding: 10px 16px; border-radius: 8px;
+    font-size: 13px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 200ms;
+    z-index: 2200;
+    font-family: var(--mono-font);
+  }
+  .toast.show { opacity: 1; }
+  body[data-direct-mode="active"] .toast { z-index: 2200; filter: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    body[data-direct-mode="active"] .tm-scroller { animation: none; }
+    body[data-direct-mode="active"] .direct-mode-indicator .pulse { animation: none; }
+    .topbar, .sidebar, .compose { transition: none; }
+  }
+
+  /* < 820px fallback — this prototype is desktop only */
+  @media (max-width: 820px) {
+    .app { grid-template-columns: 1fr; grid-template-areas: "topbar" "main" "compose"; }
+    .sidebar { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="dot"></div>
+    <div class="name">TM-Agent<span class="sub">main · zsh</span></div>
+    <select id="state-picker" class="btn" style="font-family: var(--mono-font);">
+      <option value="shell_idle">shell_idle</option>
+      <option value="long_process">long_process</option>
+      <option value="editor">editor</option>
+      <option value="tui">tui</option>
+      <option value="repl">repl</option>
+      <option value="pager">pager</option>
+      <option value="confirm_prompt">confirm</option>
+      <option value="password_prompt">password</option>
+    </select>
+    <button class="btn" id="toggle-panel" title="隐藏/显示桌面动作栏">隐藏动作栏</button>
+    <button class="btn direct-mode-btn" id="dm-btn">
+      <span id="dm-btn-icon">⌨</span> <span id="dm-btn-label">直通模式</span>
+    </button>
+    <button class="menu" aria-label="菜单">⌃</button>
+  </div>
+
+  <div class="action-panel-desktop" id="action-panel" aria-label="动作栏"></div>
+  <div class="prompt-banner-desktop" id="prompt-banner"></div>
+
+  <aside class="sidebar">
+    <h3>会话</h3>
+    <div class="session active">
+      <span class="name">main</span>
+      <span class="cmd">zsh</span>
+    </div>
+    <div class="session">
+      <span class="name">netsec</span>
+      <span class="cmd">claude</span>
+    </div>
+    <div class="session">
+      <span class="name">post</span>
+      <span class="cmd">vim</span>
+    </div>
+    <h3 style="margin-top: 20px;">窗口</h3>
+    <div class="session"><span class="name">0: editor</span></div>
+    <div class="session"><span class="name">1: build</span></div>
+  </aside>
+
+  <div class="main">
+    <div class="tm-scroller" id="scroller">$ ls
+README.md  package.json  src/  docs/
+$ cd src/frontend
+$ git status
+On branch main
+nothing to commit, working tree clean
+$ echo "hello"
+hello
+$ node -e "console.log(2+2)"
+4
+$ <span class="cursor"></span></div>
+  </div>
+
+  <div class="compose">
+    <input placeholder="输入命令,按 Enter 发送…" />
+    <button>发送</button>
+  </div>
+</div>
+
+<!-- Direct Mode indicator (hidden by default) -->
+<div class="direct-mode-indicator" role="status" aria-live="polite">
+  <span class="pulse"></span>
+  <span><b>直通中</b> · <span class="hint">按 <kbd>Ctrl+]</kbd> 或连按两次 <kbd>Esc</kbd> 退出</span></span>
+  <button class="exit-btn" id="exit-btn">退出</button>
+</div>
+
+<!-- IME composition floater -->
+<div class="ime-floater" id="ime-floater"></div>
+
+<!-- Hidden IME textarea -->
+<textarea
+  id="ime-sink"
+  aria-hidden="true"
+  tabindex="-1"
+  style="position:fixed; top:-1000px; left:-1000px; width:1px; height:1px; opacity:0;"
+></textarea>
+
+<div class="explain">
+  <b>原型说明</b><br/>
+  点右上"直通模式"按钮进入,或按 <code>Ctrl+]</code> 退出。进入后:
+  <ul style="margin: 6px 0 0; padding-left: 18px;">
+    <li>非 shell 区模糊 + 灰度</li>
+    <li>shell 四周呼吸光晕</li>
+    <li>顶部悬浮条常驻</li>
+    <li>键盘直通 PTY(原型里 toast 显示要发的字节)</li>
+    <li>中文输入法合成态显示浮层,合成完成整段发送</li>
+  </ul>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const body = document.body;
+  const app = document.querySelector(".app");
+  const dmBtn = document.getElementById("dm-btn");
+  const dmIcon = document.getElementById("dm-btn-icon");
+  const dmLabel = document.getElementById("dm-btn-label");
+  const exitBtn = document.getElementById("exit-btn");
+  const imeSink = document.getElementById("ime-sink");
+  const imeFloater = document.getElementById("ime-floater");
+  const toastEl = document.getElementById("toast");
+  const actionPanel = document.getElementById("action-panel");
+  const promptBanner = document.getElementById("prompt-banner");
+  const statePicker = document.getElementById("state-picker");
+  const togglePanel = document.getElementById("toggle-panel");
+  const topbarName = document.querySelector(".topbar .name .sub") || document.querySelector(".topbar .sub");
+
+  let active = false;
+  let lastEscTs = 0;
+  let composing = false;
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => toastEl.classList.remove("show"), 1200);
+  }
+
+  function enter() {
+    if (active) return;
+    active = true;
+    body.setAttribute("data-direct-mode", "entering");
+    requestAnimationFrame(() => body.setAttribute("data-direct-mode", "active"));
+    dmBtn.classList.add("active");
+    dmIcon.textContent = "✕";
+    dmLabel.textContent = "退出直通";
+    imeSink.focus();
+    toast("进入直通模式");
+  }
+  function exit(source) {
+    if (!active) return;
+    active = false;
+    body.setAttribute("data-direct-mode", "exiting");
+    setTimeout(() => body.removeAttribute("data-direct-mode"), 200);
+    dmBtn.classList.remove("active");
+    dmIcon.textContent = "⌨";
+    dmLabel.textContent = "直通模式";
+    imeSink.blur();
+    toast("退出直通 · 来源: " + source);
+  }
+  function toggle() { active ? exit("button") : enter(); }
+
+  dmBtn.addEventListener("click", toggle);
+  exitBtn.addEventListener("click", () => exit("indicator-btn"));
+
+  // --- keydown → bytes (simplified mirror of keydown-to-bytes.ts) ---
+  function keydownToBytes(e) {
+    if (e.isComposing || e.keyCode === 229) return null;
+    if ((e.ctrlKey || e.metaKey) && ["t", "w", "r", "n", "q"].includes((e.key || "").toLowerCase())) return null;
+    const k = e.key;
+    switch (k) {
+      case "Enter": return "\r";
+      case "Tab": return "\t";
+      case "Backspace": return "\x7f";
+      case "Delete": return "\x1b[3~";
+      case "Escape": return "\x1b";
+      case "ArrowUp": return "\x1b[A";
+      case "ArrowDown": return "\x1b[B";
+      case "ArrowLeft": return "\x1b[D";
+      case "ArrowRight": return "\x1b[C";
+      case "Home": return "\x1b[H";
+      case "End": return "\x1b[F";
+      case "PageUp": return "\x1b[5~";
+      case "PageDown": return "\x1b[6~";
+    }
+    if (/^F([1-9]|1[0-2])$/.test(k)) {
+      const n = parseInt(k.slice(1), 10);
+      if (n <= 4) return "\x1bO" + "PQRS"[n - 1];
+      const codes = [15, 17, 18, 19, 20, 21, 23, 24];
+      return "\x1b[" + codes[n - 5] + "~";
+    }
+    if (k && k.length === 1) {
+      if (e.ctrlKey && /^[a-zA-Z]$/.test(k)) {
+        return String.fromCharCode(k.toLowerCase().charCodeAt(0) - 96);
+      }
+      if (e.altKey) return "\x1b" + k;
+      return k;
+    }
+    return null;
+  }
+
+  function humanByte(b) {
+    return b.replace(/\r/g, "\\r").replace(/\t/g, "\\t").replace(/\x1b/g, "\\x1b")
+      .replace(/\x7f/g, "\\x7f").replace(/[\x00-\x1f]/g, function (c) {
+        return "\\x" + c.charCodeAt(0).toString(16).padStart(2, "0");
+      });
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (!active) return;
+
+    // Ctrl+] exit
+    if (e.ctrlKey && e.code === "BracketRight") {
+      e.preventDefault(); e.stopPropagation();
+      exit("ctrl-bracket");
+      return;
+    }
+    // Double Esc
+    if (e.key === "Escape" && !composing) {
+      const now = Date.now();
+      if (now - lastEscTs < 300) {
+        e.preventDefault(); e.stopPropagation();
+        exit("double-esc");
+        lastEscTs = 0;
+        return;
+      }
+      lastEscTs = now;
+    }
+
+    const bytes = keydownToBytes(e);
+    if (bytes === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    toast("发送: " + humanByte(bytes));
+  }, true);
+
+  document.addEventListener("paste", function (e) {
+    if (!active) return;
+    const text = e.clipboardData && e.clipboardData.getData("text/plain");
+    if (text) {
+      e.preventDefault();
+      toast("粘贴: " + humanByte(text.slice(0, 40)) + (text.length > 40 ? "…" : ""));
+    }
+  }, true);
+
+  // --- IME ---
+  imeSink.addEventListener("compositionstart", () => {
+    composing = true;
+    // position floater near mock cursor (bottom-right of visible text)
+    const cursor = document.querySelector(".cursor");
+    if (cursor) {
+      const r = cursor.getBoundingClientRect();
+      imeFloater.style.left = r.left + "px";
+      imeFloater.style.top = (r.bottom + 4) + "px";
+    }
+    imeFloater.textContent = "";
+    imeFloater.classList.add("show");
+  });
+  imeSink.addEventListener("compositionupdate", (e) => {
+    imeFloater.textContent = e.data || "";
+  });
+  imeSink.addEventListener("compositionend", (e) => {
+    composing = false;
+    imeFloater.classList.remove("show");
+    imeFloater.textContent = "";
+    if (e.data) toast("IME 发送: " + e.data);
+    imeSink.value = "";
+  });
+
+  // Keep focus on IME sink during direct-mode so composition events reach it
+  document.addEventListener("click", (e) => {
+    if (active && !e.target.closest(".direct-mode-indicator")) {
+      imeSink.focus();
+    }
+  });
+
+  // URL ?direct_mode=1 cold start
+  if (new URLSearchParams(location.search).get("direct_mode") === "1") {
+    enter();
+  }
+
+  // -----------------------------------------------------------
+  // Desktop ActionPanel cards per state + Alt+1..9 shortcuts
+  // -----------------------------------------------------------
+  const STATE_CARDS = {
+    shell_idle: [
+      { label: "↑ 历史", payload: "__HISTORY__", special: true },
+      { label: "Tab", payload: "\t", special: true },
+      { label: "ls", payload: "ls\r" },
+      { label: "clear", payload: "clear\r" },
+      { label: "git st", payload: "git status\r" },
+      { label: "git diff", payload: "git diff\r" },
+      { label: "npm run dev", payload: "npm run dev\r" },
+      { label: "cd ..", payload: "cd ..\r" }
+    ],
+    long_process: "big_stop",
+    editor: [
+      { label: "Esc", payload: "\x1b", special: true },
+      { label: ":w", payload: ":w\r" },
+      { label: ":q", payload: ":q\r" },
+      { label: ":wq", payload: ":wq\r" },
+      { label: "i", payload: "i" },
+      { label: "/", payload: "/" },
+      { label: "gg", payload: "gg" },
+      { label: "G", payload: "G" },
+      { label: "dd", payload: "dd" },
+      { label: "yy", payload: "yy" }
+    ],
+    tui: [
+      { label: "Esc", payload: "\x1b", special: true },
+      { label: "y", payload: "y" },
+      { label: "n", payload: "n" },
+      { label: "/", payload: "/" },
+      { label: "?", payload: "?" },
+      { label: "Enter", payload: "\r", special: true },
+      { label: "Ctrl+C", payload: "\x03", special: true },
+      { label: "q", payload: "q" }
+    ],
+    repl: [
+      { label: "↑ 历史", payload: "__HISTORY__", special: true },
+      { label: "Tab", payload: "\t", special: true },
+      { label: ".exit", payload: ".exit\r" },
+      { label: ".help", payload: ".help\r" },
+      { label: ".clear", payload: ".clear\r" },
+      { label: "const", payload: "const " },
+      { label: "let", payload: "let " },
+      { label: "function", payload: "function " }
+    ],
+    pager: [
+      { label: "Space", payload: " ", special: true },
+      { label: "b", payload: "b" },
+      { label: "/", payload: "/" },
+      { label: "n", payload: "n" },
+      { label: "q", payload: "q" },
+      { label: "G", payload: "G" },
+      { label: "gg", payload: "gg" },
+      { label: "?", payload: "?" }
+    ],
+    confirm_prompt: "banner_confirm",
+    password_prompt: "banner_password"
+  };
+
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+  const kbdHint = (n) => (isMac ? "⌥" : "Alt+") + n;
+
+  let currentCards = [];
+
+  function renderForState(state) {
+    currentCards = [];
+    promptBanner.style.display = "none";
+    actionPanel.style.display = "flex";
+    actionPanel.innerHTML = "";
+
+    const spec = STATE_CARDS[state];
+
+    if (spec === "banner_confirm") {
+      actionPanel.style.display = "none";
+      promptBanner.style.display = "flex";
+      promptBanner.innerHTML = `
+        <h5>脚本在等待: <b>[Y/n]</b></h5>
+        <button class="btn-yes">是 (y)</button>
+        <button class="btn-no">否 (n)</button>
+      `;
+      promptBanner.querySelector(".btn-yes").addEventListener("click", () => { toast("发送 y\\r"); });
+      promptBanner.querySelector(".btn-no").addEventListener("click", () => { toast("发送 n\\r"); });
+      return;
+    }
+    if (spec === "banner_password") {
+      actionPanel.style.display = "none";
+      promptBanner.style.display = "flex";
+      promptBanner.innerHTML = `
+        <h5>请输入密码 <span style="opacity:0.6">(sudo)</span></h5>
+        <input type="password" autocomplete="off" placeholder="••••••••" />
+        <button class="btn-yes">发送</button>
+      `;
+      promptBanner.querySelector(".btn-yes").addEventListener("click", () => {
+        const v = promptBanner.querySelector("input").value;
+        toast("发送密码 " + "*".repeat(Math.min(v.length, 12)) + " + \\r");
+        promptBanner.querySelector("input").value = "";
+      });
+      return;
+    }
+    if (spec === "big_stop") {
+      const c = document.createElement("button");
+      c.className = "card big-stop";
+      c.textContent = "⏹ 停止 (Ctrl+C)";
+      c.addEventListener("click", () => send("\x03"));
+      actionPanel.appendChild(c);
+      currentCards.push({ label: "Ctrl+C", payload: "\x03" });
+      return;
+    }
+    (spec || []).forEach((card, i) => {
+      const el = document.createElement("button");
+      el.className = "card" + (card.special ? " special" : "");
+      const labelSpan = document.createElement("span");
+      labelSpan.textContent = card.label;
+      el.appendChild(labelSpan);
+      if (i < 9) {
+        const kb = document.createElement("span");
+        kb.className = "kbd";
+        kb.textContent = kbdHint(i + 1);
+        el.appendChild(kb);
+      }
+      el.addEventListener("click", () => {
+        if (card.payload === "__HISTORY__") toast("(原型) 打开历史选择器");
+        else send(card.payload);
+      });
+      actionPanel.appendChild(el);
+      currentCards.push(card);
+    });
+  }
+
+  function send(payload) {
+    const preview = humanByte(payload);
+    toast("发送: " + preview);
+  }
+
+  // Alt+1..9 shortcuts (always-on — they beat Direct Mode too)
+  document.addEventListener("keydown", function (e) {
+    if (!e.altKey) return;
+    if (!/^[1-9]$/.test(e.key)) return;
+    const n = parseInt(e.key, 10);
+    const card = currentCards[n - 1];
+    if (!card) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (card.payload === "__HISTORY__") toast("(原型) Alt+" + n + " → 打开历史");
+    else {
+      toast("Alt+" + n + " → " + humanByte(card.payload));
+    }
+  }, true);  // capture phase so Direct Mode does not eat it
+
+  statePicker.addEventListener("change", () => {
+    renderForState(statePicker.value);
+    topbarName.textContent = "· " + statePicker.value;
+  });
+
+  // Toggle panel show/hide
+  let panelHidden = false;
+  togglePanel.addEventListener("click", () => {
+    panelHidden = !panelHidden;
+    if (panelHidden) app.classList.add("no-action-panel");
+    else app.classList.remove("no-action-panel");
+    togglePanel.textContent = panelHidden ? "显示动作栏" : "隐藏动作栏";
+  });
+
+  // init
+  renderForState("shell_idle");
+</script>
+</body>
+</html>

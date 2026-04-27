@@ -1,0 +1,132 @@
+/*
+ * Shared visual polish (PR C / Phase 6).
+ *
+ * Philosophy: motion is meant to reinforce spatial mental models, not decorate.
+ * Drawers slide up from the bottom because that's where they live. Sheets
+ * fade their backdrop because it's "background". Focus rings are consistent
+ * because they're a reader's only peripheral cue for active state.
+ *
+ * `prefers-reduced-motion: reduce` disables every animation here — the app
+ * stays fully functional without them.
+ */
+
+/* ── Bottom sheet + drawer: slide up, fade backdrop ── */
+
+@keyframes tm-sheet-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes tm-backdrop-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.tm-sheet-panel {
+  animation: tm-sheet-slide-up 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tm-sheet-backdrop {
+  animation: tm-backdrop-fade-in 160ms ease-out;
+}
+
+/* ── Sidebar collapse / expand transitions ── */
+
+@keyframes tm-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.tm-fade-in {
+  animation: tm-fade-in 160ms ease-out;
+}
+
+/* ── Focus ring unification ── */
+/*
+ * Default Tailwind focus rings inherit per-component styles (e.g. the compose
+ * textarea uses focus:ring-accent). That's good for known primitives but
+ * leaves every plain <button> with the browser default (a blue outline on
+ * Chromium). Unify via :focus-visible so keyboard users always see a visible
+ * ring and pointer users don't get focus flashes on click.
+ */
+button:not([data-unstyled]):focus-visible,
+[role="button"]:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-accent, #7cc0ff);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ── Session-row pulse when currently attached (subtle) ── */
+
+@keyframes tm-attached-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(124, 192, 255, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(124, 192, 255, 0.55);
+  }
+}
+
+/* ── Skeleton shimmer for loading states ── */
+
+@keyframes tm-skeleton-shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+.tm-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  background-size: 800px 100%;
+  animation: tm-skeleton-shimmer 1.4s linear infinite;
+  border-radius: 6px;
+}
+
+/* ── Toast ── */
+
+@keyframes tm-toast-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.tm-toast {
+  animation: tm-toast-in 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-sheet-panel,
+  .tm-sheet-backdrop,
+  .tm-fade-in,
+  .tm-skeleton,
+  .tm-toast {
+    animation: none;
+  }
+}

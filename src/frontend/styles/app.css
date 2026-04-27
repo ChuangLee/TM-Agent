@@ -1,0 +1,45 @@
+@import "tailwindcss";
+@import "./tokens.css";
+@import "./polish.css";
+
+@theme {
+  --color-bg: #0a0f1b;
+  --color-bg-elev: #111827;
+  --color-bg-raised: #1a2235;
+  --color-line: #1f2937;
+  --color-line-strong: #334155;
+  --color-ink: #d1e4ff;
+  --color-ink-dim: #93a4bb;
+  --color-ink-mute: #64748b;
+  --color-accent: #7cc0ff;
+  --color-accent-2: #a78bfa;
+  --color-ok: #60d394;
+  --color-warn: #fbbf24;
+  --color-err: #f87171;
+
+  --font-mono: "Menlo", "SF Mono", "Fira Code", "MesloLGS NF", Consolas, monospace;
+  --font-sans: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: var(--app-height, 100dvh);
+  overflow: hidden;
+}
+
+body {
+  background: radial-gradient(circle at 80% -10%, #1a2340, var(--color-bg) 55%);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: var(--app-height, 100dvh);
+}

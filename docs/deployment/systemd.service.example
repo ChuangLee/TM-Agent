@@ -1,0 +1,16 @@
+[Unit]
+Description=TM-Agent web interface
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+EnvironmentFile=/etc/tm-agent/env
+WorkingDirectory=/opt/tm-agent
+ExecStart=/usr/bin/node /opt/tm-agent/dist/backend/cli.js --port 8767
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

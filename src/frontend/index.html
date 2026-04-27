@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no,interactive-widget=resizes-content"
+    />
+    <meta name="theme-color" content="#0a0f1b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!--
+      Rewritten at serve time by the backend when --base-path is set
+      (src/backend/server.ts → loadIndexHtml). All frontend REST/WS/asset
+      URLs are resolved relative to this element, which is how the app
+      supports subpath reverse-proxy deployment without rebuilding.
+    -->
+    <base href="/" />
+    <title>TM-Agent</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

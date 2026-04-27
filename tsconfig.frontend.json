@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/frontend/*"],
+      "@shared/*": ["src/shared/*"]
+    }
+  },
+  "include": ["src/frontend/**/*.ts", "src/frontend/**/*.tsx", "src/shared/**/*.ts"]
+}
