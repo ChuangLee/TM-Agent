@@ -1,14 +1,11 @@
 # /etc/caddy/Caddyfile - subpath reverse proxy for TM-Agent.
 # Backend expected at: http://127.0.0.1:8767
 #
-# Pair with:
-#   sudo ./scripts/install.sh --base-path /tmux
-#
 # Open:
 #   https://host.example/tmux/?token=<TM_AGENT_TOKEN>
 #
-# Important: use `handle`, not `handle_path`. `handle_path` strips the
-# /tmux prefix, but TM-Agent expects the prefix when --base-path /tmux is set.
+# `handle_path` strips /tmux before forwarding. X-Forwarded-Prefix tells
+# TM-Agent what public prefix to inject into <base href> for assets/API/WS.
 
 host.example {
 	encode zstd gzip
@@ -19,9 +16,10 @@ host.example {
 
 	redir /tmux /tmux/
 
-	handle /tmux/* {
+	handle_path /tmux/* {
 		reverse_proxy 127.0.0.1:8767 {
 			header_up Host {host}
+			header_up X-Forwarded-Prefix /tmux
 		}
 	}
 }

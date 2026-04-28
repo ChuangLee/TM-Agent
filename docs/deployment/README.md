@@ -137,29 +137,19 @@ https://tmux.example.com/?token=<TM_AGENT_TOKEN>
 ## Subpath deploy (ADR-0018)
 
 If you don't have a spare subdomain and want to mount TM-Agent at
-`https://host.example/tmux/` instead of `https://tmux.host.example/`,
-add `--base-path /tmux` to the installer:
+`https://host.example/tmux/` instead of `https://tmux.host.example/`, keep the
+installer unchanged and configure the reverse proxy to send
+`X-Forwarded-Prefix: /tmux`.
 
-```bash
-sudo ./scripts/install.sh --workspace-root ~/repos --base-path /tmux
-```
+Recommended templates:
 
-Or from the one-liner:
+- nginx: [`nginx.conf.example.subpath`](./nginx.conf.example.subpath)
+- Caddy: [`Caddyfile.example.subpath`](./Caddyfile.example.subpath)
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/ChuangLee/TM-Agent/main/scripts/bootstrap.sh \
-  | sudo bash -s -- --workspace-root /root/repos --base-path /tmux
-```
-
-Then use [`nginx.conf.example.subpath`](./nginx.conf.example.subpath) as
-your nginx template. The prefix you put in nginx (`location /tmux/`)
-and the prefix you pass to the installer (`--base-path /tmux`) must
-match; the installer writes `TM_AGENT_BASE_PATH` into
-`/etc/tm-agent/env` so the systemd unit picks it up on every restart.
-
-Caddy subpath template: [`Caddyfile.example.subpath`](./Caddyfile.example.subpath).
-Use `handle /tmux/*`, not `handle_path`, because TM-Agent expects the prefix to
-remain present when `--base-path /tmux` is configured.
+TM-Agent also auto-detects unstripped paths such as `/tmux/api/config`, so older
+`handle /tmux/* { reverse_proxy ... }` configs continue to work. Explicit
+`--base-path /tmux` / `TM_AGENT_BASE_PATH=/tmux` remains supported, but is no
+longer required for normal reverse-proxy subpath deployments.
 
 ## Manual one-time setup
 

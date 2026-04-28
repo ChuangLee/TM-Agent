@@ -4,7 +4,7 @@ import type { IncomingMessage } from "node:http";
 import path from "node:path";
 import express from "express";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { RuntimeConfig } from "./config.js";
+import { normalizeBasePath, type RuntimeConfig } from "./config.js";
 import type {
   ControlClientMessage,
   ControlServerMessage,
@@ -107,6 +107,61 @@ export const frontendFallbackRoute = "/{*path}";
  */
 export const isWebSocketPath = (requestPath: string, basePath = ""): boolean =>
   requestPath.startsWith(`${basePath}/ws/`);
+
+const routeMarkers = ["/api/", "/assets/", "/ws/"] as const;
+
+const firstHeaderValue = (value: string | string[] | undefined): string | undefined => {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw?.split(",")[0]?.trim();
+};
+
+const forwardedPrefix = (headers: IncomingMessage["headers"]): string => {
+  const raw = firstHeaderValue(headers["x-forwarded-prefix"]);
+  return normalizeBasePath(raw);
+};
+
+const inferBasePathFromPathname = (pathname: string): string => {
+  if (!pathname.startsWith("/") || pathname === "/") return "";
+  if (
+    routeMarkers.some((marker) => pathname === marker.slice(0, -1) || pathname.startsWith(marker))
+  ) {
+    return "";
+  }
+
+  for (const marker of routeMarkers) {
+    const index = pathname.indexOf(marker);
+    if (index > 0) {
+      return normalizeBasePath(pathname.slice(0, index));
+    }
+  }
+
+  // A request like `/tmux/` is the SPA entrypoint for a subpath deployment
+  // when the reverse proxy did not strip the prefix.
+  const trimmed = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  return normalizeBasePath(trimmed);
+};
+
+const stripBasePathFromUrl = (rawUrl: string, basePath: string): string => {
+  if (!basePath) return rawUrl;
+  const url = new URL(rawUrl || "/", "http://localhost");
+  if (url.pathname === basePath) {
+    url.pathname = "/";
+  } else if (url.pathname.startsWith(`${basePath}/`)) {
+    url.pathname = url.pathname.slice(basePath.length) || "/";
+  }
+  return `${url.pathname}${url.search}`;
+};
+
+const publicBasePathForRequest = (
+  request: Pick<IncomingMessage, "headers"> & { url?: string },
+  configuredBasePath: string
+): string => {
+  if (configuredBasePath) return configuredBasePath;
+  const fromHeader = forwardedPrefix(request.headers);
+  if (fromHeader) return fromHeader;
+  const url = new URL(request.url ?? "/", "http://localhost");
+  return inferBasePathFromPathname(url.pathname);
+};
 
 const SEED_HISTORY_LINES = 10_000;
 
@@ -252,9 +307,25 @@ export const createTMAgentServer = (
   const authService = deps.authService ?? new AuthService(config.password, config.token);
 
   const app = express();
-  app.use(express.json());
 
   const basePath = config.basePath ?? "";
+  app.use((req, res, next) => {
+    const publicBasePath = publicBasePathForRequest(req, basePath);
+    res.locals.publicBasePath = publicBasePath;
+
+    // Support path-prefix reverse proxies without forcing operators to set
+    // TM_AGENT_BASE_PATH. If Caddy/nginx forwards `/tmux/api/config` as-is,
+    // strip `/tmux` internally so the existing root-mounted routes still
+    // match. If the proxy already stripped the prefix and sent
+    // X-Forwarded-Prefix, this is a no-op.
+    if (!basePath && publicBasePath) {
+      req.url = stripBasePathFromUrl(req.url, publicBasePath);
+    }
+    next();
+  });
+
+  app.use(express.json());
+
   // Every user-facing mount is namespaced by `basePath` so the app can live
   // under a reverse-proxy subpath without colliding with other services on
   // the same hostname. `mount("/api/foo")` → mounted at `/tmux/api/foo` when
@@ -266,14 +337,16 @@ export const createTMAgentServer = (
   // subpath deploys rewrite it to `<base href="/tmux/">` so every relative
   // URL the frontend issues (REST, WS, assets) resolves under the prefix.
   const indexHtmlPath = path.join(config.frontendDir, "index.html");
-  let rewrittenIndexHtml: string | undefined;
-  const loadIndexHtml = async (): Promise<string | undefined> => {
-    if (rewrittenIndexHtml !== undefined) return rewrittenIndexHtml;
+  const rewrittenIndexHtml = new Map<string, string>();
+  const loadIndexHtml = async (publicBasePath: string): Promise<string | undefined> => {
+    const cached = rewrittenIndexHtml.get(publicBasePath);
+    if (cached !== undefined) return cached;
     try {
       const raw = await fs.readFile(indexHtmlPath, "utf8");
-      const baseHref = basePath ? `${basePath}/` : "/";
-      rewrittenIndexHtml = raw.replace(/<base\s+href="[^"]*"\s*\/?>/, `<base href="${baseHref}">`);
-      return rewrittenIndexHtml;
+      const baseHref = publicBasePath ? `${publicBasePath}/` : "/";
+      const html = raw.replace(/<base\s+href="[^"]*"\s*\/?>/, `<base href="${baseHref}">`);
+      rewrittenIndexHtml.set(publicBasePath, html);
+      return html;
     } catch {
       return undefined;
     }
@@ -285,7 +358,7 @@ export const createTMAgentServer = (
       scrollbackLines: config.scrollbackLines,
       pollIntervalMs: config.pollIntervalMs,
       workspaceRoot: config.workspaceRoot,
-      basePath
+      basePath: typeof res.locals.publicBasePath === "string" ? res.locals.publicBasePath : basePath
     });
   });
 
@@ -366,7 +439,9 @@ export const createTMAgentServer = (
       return;
     }
 
-    const html = await loadIndexHtml();
+    const publicBasePath =
+      typeof res.locals.publicBasePath === "string" ? res.locals.publicBasePath : basePath;
+    const html = await loadIndexHtml(publicBasePath);
     if (!html) {
       res.status(500).send("Frontend not built. Run npm run build:frontend");
       return;
@@ -1069,6 +1144,10 @@ export const createTMAgentServer = (
   });
 
   server.on("upgrade", (request, socket, head) => {
+    const publicBasePath = publicBasePathForRequest(request, basePath);
+    if (!basePath && publicBasePath) {
+      request.url = stripBasePathFromUrl(request.url ?? "/", publicBasePath);
+    }
     const url = new URL(request.url ?? "/", "http://localhost");
 
     if (url.pathname === `${basePath}/ws/control`) {

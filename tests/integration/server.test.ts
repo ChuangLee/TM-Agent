@@ -1,4 +1,7 @@
+import { promises as fs } from "node:fs";
 import type { AddressInfo } from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { WebSocket, type RawData } from "ws";
 import { AuthService } from "../../src/backend/auth/auth-service.js";
@@ -132,6 +135,121 @@ describe("TM-Agent server", () => {
     });
     control.send(JSON.stringify({ type: "auth", token: "test-token" }));
 
+    const response = await waitForMessage<{ type: string }>(
+      control,
+      (msg) => msg.type === "auth_ok"
+    );
+    expect(response.type).toBe("auth_ok");
+    control.close();
+  });
+
+  test("auto-detects an unstripped reverse-proxy subpath", async () => {
+    await runningServer.stop();
+
+    const frontendDir = await fs.mkdtemp(path.join(os.tmpdir(), "tm-agent-frontend-"));
+    await fs.mkdir(path.join(frontendDir, "assets"));
+    await fs.writeFile(
+      path.join(frontendDir, "index.html"),
+      [
+        "<!doctype html>",
+        "<html>",
+        "<head>",
+        '<base href="/">',
+        '<script type="module" src="./assets/app.js"></script>',
+        "</head>",
+        "<body></body>",
+        "</html>"
+      ].join("")
+    );
+    await fs.writeFile(path.join(frontendDir, "assets", "app.js"), "export default 1;\n");
+
+    tmux = new FakeTmuxGateway(["main"]);
+    ptyFactory = new FakePtyFactory();
+    runningServer = createTMAgentServer(
+      {
+        ...buildConfig("test-token"),
+        frontendDir
+      },
+      {
+        tmux,
+        ptyFactory,
+        logger: { log: () => undefined, error: () => undefined }
+      }
+    );
+    await runningServer.start();
+    const address = runningServer.server.address() as AddressInfo;
+    baseWsUrl = `ws://127.0.0.1:${address.port}`;
+    baseHttpUrl = `http://127.0.0.1:${address.port}`;
+
+    const html = await fetch(`${baseHttpUrl}/tmux/?token=test-token`);
+    expect(html.status).toBe(200);
+    expect(await html.text()).toContain('<base href="/tmux/">');
+
+    const asset = await fetch(`${baseHttpUrl}/tmux/assets/app.js`);
+    expect(asset.status).toBe(200);
+    expect(asset.headers.get("content-type")).toContain("javascript");
+
+    const config = await fetch(`${baseHttpUrl}/tmux/api/config`);
+    expect(config.status).toBe(200);
+    await expect(config.json()).resolves.toMatchObject({ basePath: "/tmux" });
+
+    const control = await openSocket(`${baseWsUrl}/tmux/ws/control`);
+    control.send(JSON.stringify({ type: "auth", token: "test-token" }));
+    const response = await waitForMessage<{ type: string }>(
+      control,
+      (msg) => msg.type === "auth_ok"
+    );
+    expect(response.type).toBe("auth_ok");
+    control.close();
+  });
+
+  test("honours X-Forwarded-Prefix when the proxy strips the subpath", async () => {
+    await runningServer.stop();
+
+    const frontendDir = await fs.mkdtemp(path.join(os.tmpdir(), "tm-agent-frontend-"));
+    await fs.mkdir(path.join(frontendDir, "assets"));
+    await fs.writeFile(
+      path.join(frontendDir, "index.html"),
+      '<!doctype html><base href="/"><script type="module" src="./assets/app.js"></script>'
+    );
+    await fs.writeFile(path.join(frontendDir, "assets", "app.js"), "export default 1;\n");
+
+    tmux = new FakeTmuxGateway(["main"]);
+    ptyFactory = new FakePtyFactory();
+    runningServer = createTMAgentServer(
+      {
+        ...buildConfig("test-token"),
+        frontendDir
+      },
+      {
+        tmux,
+        ptyFactory,
+        logger: { log: () => undefined, error: () => undefined }
+      }
+    );
+    await runningServer.start();
+    const address = runningServer.server.address() as AddressInfo;
+    baseWsUrl = `ws://127.0.0.1:${address.port}`;
+    baseHttpUrl = `http://127.0.0.1:${address.port}`;
+
+    const headers = { "x-forwarded-prefix": "/tmux" };
+    const html = await fetch(`${baseHttpUrl}/?token=test-token`, { headers });
+    expect(await html.text()).toContain('<base href="/tmux/">');
+
+    const asset = await fetch(`${baseHttpUrl}/assets/app.js`, { headers });
+    expect(asset.status).toBe(200);
+    expect(asset.headers.get("content-type")).toContain("javascript");
+
+    const config = await fetch(`${baseHttpUrl}/api/config`, { headers });
+    expect(config.status).toBe(200);
+    await expect(config.json()).resolves.toMatchObject({ basePath: "/tmux" });
+
+    const control = new WebSocket(`${baseWsUrl}/ws/control`, { headers });
+    await new Promise<void>((resolve, reject) => {
+      control.once("open", resolve);
+      control.once("error", reject);
+    });
+    control.send(JSON.stringify({ type: "auth", token: "test-token" }));
     const response = await waitForMessage<{ type: string }>(
       control,
       (msg) => msg.type === "auth_ok"

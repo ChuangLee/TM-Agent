@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   supervising multiple AI agents directly through tmux.
 - The one-line installer now bootstraps `git`, tmux, openssl, native build
   tools, and Node.js 20+ on common Linux distributions before building the app.
+- Subpath reverse-proxy deployments can now be auto-detected from
+  `X-Forwarded-Prefix` or the request path, so `TM_AGENT_BASE_PATH` is optional
+  for common `/tmux/` installs.
 
 ### Security
 

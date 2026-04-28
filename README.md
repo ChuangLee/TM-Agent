@@ -136,7 +136,7 @@ curl -fsSL https://raw.githubusercontent.com/ChuangLee/TM-Agent/main/scripts/boo
 
 - 独立子域名（`https://tmux.host.example/`）：[`docs/deployment/nginx.conf.example`](./docs/deployment/nginx.conf.example)
 - Caddy 独立子域名：[`docs/deployment/Caddyfile.example`](./docs/deployment/Caddyfile.example)
-- 子路径（`https://host.example/tmux/`）：[`docs/deployment/nginx.conf.example.subpath`](./docs/deployment/nginx.conf.example.subpath) —— 搭配安装时加 `--base-path /tmux`（ADR-0018）
+- 子路径（`https://host.example/tmux/`）：[`docs/deployment/nginx.conf.example.subpath`](./docs/deployment/nginx.conf.example.subpath) —— 反代传 `X-Forwarded-Prefix: /tmux`，无需重装时配置 `--base-path`
 - Caddy 子路径：[`docs/deployment/Caddyfile.example.subpath`](./docs/deployment/Caddyfile.example.subpath)
 
 **已 clone 过仓库**直接 `sudo ./scripts/install.sh --workspace-root ~/repos` 即可；**完整手动步骤**见 [`docs/deployment/README.md`](./docs/deployment/README.md)。

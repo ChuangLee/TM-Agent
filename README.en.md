@@ -141,7 +141,7 @@ The one thing the script does not do is nginx / Caddy + TLS — every reverse pr
 
 - Standalone subdomain (`https://tmux.host.example/`): [`docs/deployment/nginx.conf.example`](./docs/deployment/nginx.conf.example)
 - Caddy standalone subdomain: [`docs/deployment/Caddyfile.example`](./docs/deployment/Caddyfile.example)
-- Subpath (`https://host.example/tmux/`): [`docs/deployment/nginx.conf.example.subpath`](./docs/deployment/nginx.conf.example.subpath) — pair with `--base-path /tmux` at install time (ADR-0018)
+- Subpath (`https://host.example/tmux/`): [`docs/deployment/nginx.conf.example.subpath`](./docs/deployment/nginx.conf.example.subpath) — pass `X-Forwarded-Prefix: /tmux`; no `--base-path` reinstall needed
 - Caddy subpath: [`docs/deployment/Caddyfile.example.subpath`](./docs/deployment/Caddyfile.example.subpath)
 
 **Already cloned the repo?** Just run `sudo ./scripts/install.sh --workspace-root ~/repos`. Full manual steps in [`docs/deployment/README.md`](./docs/deployment/README.md).
